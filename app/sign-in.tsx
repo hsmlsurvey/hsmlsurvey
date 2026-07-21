@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Platform, ScrollView, KeyboardAvoidingView } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Platform, ScrollView, KeyboardAvoidingView, Linking } from 'react-native';
 import { Link, router } from 'expo-router';
 import { MessageCircle } from 'lucide-react-native';
 import { useAuth } from '@/context/AuthContext';
@@ -13,12 +13,36 @@ export default function SignInScreen() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [whatsapp, setWhatsapp] = useState('https://wa.me/0000000000');
+  const [whatsapp, setWhatsapp] = useState(''); // Initial state khali rakhi hai
 
-  React.useEffect(() => {
-    supabase.from('app_settings').select('value').eq('key', 'admin_whatsapp_link').maybeSingle().then(({ data }) => {
-      if (data?.value) setWhatsapp(data.value);
-    });
+  useEffect(() => {
+    async function fetchWhatsAppSetting() {
+      try {
+        const { data, error } = await supabase
+          .from('app_settings')
+          .select('value')
+          .eq('key', 'admin_whatsapp_link')
+          .maybeSingle();
+
+        if (error) {
+          console.error('Supabase RLS/Fetch Error:', error.message);
+          return;
+        }
+
+        if (data?.value) {
+          let val = data.value.trim();
+          // '+' sign ko remove kar ke clean wa.me URL format karna (WhatsApp compatibility ke liye)
+          if (val.includes('wa.me/+')) {
+            val = val.replace('wa.me/+', 'wa.me/');
+          }
+          setWhatsapp(val);
+        }
+      } catch (err) {
+        console.error('Unexpected error fetching setting:', err);
+      }
+    }
+
+    fetchWhatsAppSetting();
   }, []);
 
   const onSubmit = async () => {
@@ -29,6 +53,16 @@ export default function SignInScreen() {
     setLoading(false);
     if (res.error) setError(res.error);
     else router.replace('/(app)/dashboard');
+  };
+
+  const handleWhatsAppClick = () => {
+    if (!whatsapp) return;
+
+    if (Platform.OS === 'web') {
+      window.open(whatsapp, '_blank');
+    } else {
+      Linking.openURL(whatsapp);
+    }
   };
 
   return (
@@ -61,14 +95,17 @@ export default function SignInScreen() {
             </View>
           </Card>
 
-          <TouchableOpacity
-            onPress={() => { if (Platform.OS === 'web') window.open(whatsapp, '_blank'); }}
-            style={[styles.waBtn, { borderColor: p.border, backgroundColor: p.surface }]}
-            activeOpacity={0.8}
-          >
-            <MessageCircle size={18} color="#25D366" />
-            <Text style={[styles.waText, { color: p.text }]}>Contact Admin via WhatsApp</Text>
-          </TouchableOpacity>
+          {/* Button tab hi dikhega jab Supabase se live URL fetch ho chuka ho */}
+          {whatsapp ? (
+            <TouchableOpacity
+              onPress={handleWhatsAppClick}
+              style={[styles.waBtn, { borderColor: p.border, backgroundColor: p.surface }]}
+              activeOpacity={0.8}
+            >
+              <MessageCircle size={18} color="#25D366" />
+              <Text style={[styles.waText, { color: p.text }]}>Contact Admin via WhatsApp</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
