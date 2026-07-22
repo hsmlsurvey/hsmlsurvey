@@ -17,6 +17,7 @@ export default function RootLayout() {
           {/* Google Search (SEO) ke liye Meta Tags */}
           <Head>
             <title>HSML Survey - Hamza Sugar Mills</title>
+            <meta name="google-site-verification" content="p9wWzAtSev8X13OCAUM9h1rj9aUk0wQlnoYZa51li9Y" />
             <meta 
               name="description" 
               content="Official Grower Survey application for Hamza Sugar Mills (HSML)." 
