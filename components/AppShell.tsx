@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -29,6 +29,8 @@ import {
   ShieldCheck,
   Hash,
   Layers,
+  ChevronUp,
+  ChevronDown,
 } from 'lucide-react-native';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
@@ -42,6 +44,9 @@ interface NavItem {
   visible: boolean;
 }
 
+// Global variable to persist scroll position across route changes
+let globalSidebarScrollY = 0;
+
 export function AppShell({ children, title }: { children: React.ReactNode; title: string }) {
   const p = usePalette();
   const { mode, toggle } = useTheme();
@@ -49,6 +54,7 @@ export function AppShell({ children, title }: { children: React.ReactNode; title
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [pwOpen, setPwOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false); // Drop-up menu state
 
   const navItems: NavItem[] = [
     { label: 'Dashboard', href: '/(app)/dashboard', icon: <LayoutDashboard size={18} color={p.sidebarText} />, visible: true },
@@ -58,14 +64,17 @@ export function AppShell({ children, title }: { children: React.ReactNode; title
     { label: 'Mozas', href: '/(app)/mozas', icon: <MapPin size={18} color={p.sidebarText} />, visible: can('mozas', 'view') || can('mozas', 'insert') },
     { label: 'User Management', href: '/(app)/users', icon: <Settings size={18} color={p.sidebarText} />, visible: can('app_users', 'view') || can('app_users', 'insert') },
     { label: 'Permissions', href: '/(app)/permissions', icon: <ShieldCheck size={18} color={p.sidebarText} />, visible: can('app_users', 'update') },
-    { label: 'Circle / Moza Wise', href: '/(app)/reports/report1', icon: <BarChart3 size={18} color={p.sidebarText} />, visible: can('report_circle_moza', 'view') },
-    { label: 'Category Wise', href: '/(app)/reports/report2', icon: <BarChart3 size={18} color={p.sidebarText} />, visible: can('report_category', 'view') },
-    { label: 'Variety Wise', href: '/(app)/reports/report3', icon: <BarChart3 size={18} color={p.sidebarText} />, visible: can('report_variety', 'view') },
-    { label: 'Grower Wise', href: '/(app)/reports/report4', icon: <ClipboardList size={18} color={p.sidebarText} />, visible: can('report_grower', 'view') },
+    { label: 'Circle / Moza Wise', href: '/(app)/reports/summary', icon: <BarChart3 size={18} color={p.sidebarText} />, visible: can('report_circle_moza', 'view') },
+    { label: 'Category Wise', href: '/(app)/reports/category_wise_report', icon: <BarChart3 size={18} color={p.sidebarText} />, visible: can('report_category', 'view') },
+    { label: 'Variety Wise', href: '/(app)/reports/variety_wise_report', icon: <BarChart3 size={18} color={p.sidebarText} />, visible: can('report_variety', 'view') },
+    { label: 'Grower Wise', href: '/(app)/reports/grower_wise_report', icon: <ClipboardList size={18} color={p.sidebarText} />, visible: can('report_grower', 'view') },
   ];
 
   const isActive = (href: string) => {
     const path = href.replace('/(app)', '');
+    if (path === '/dashboard') {
+      return pathname === '/dashboard' || pathname === '/';
+    }
     return pathname === path || pathname.startsWith(path + '/');
   };
 
@@ -74,8 +83,16 @@ export function AppShell({ children, title }: { children: React.ReactNode; title
     router.push(href as any);
   };
 
-  // Keep sidebar scroll position on navigation — don't reset scroll
   const sidebarScrollRef = useRef<ScrollView>(null);
+
+  // Restore sidebar scroll position after route change
+  useEffect(() => {
+    if (globalSidebarScrollY > 0 && sidebarScrollRef.current) {
+      setTimeout(() => {
+        sidebarScrollRef.current?.scrollTo({ y: globalSidebarScrollY, animated: false });
+      }, 10);
+    }
+  }, [pathname]);
 
   const SidebarContent = (
     <View style={{ flex: 1 }}>
@@ -89,7 +106,15 @@ export function AppShell({ children, title }: { children: React.ReactNode; title
         </View>
       </View>
 
-      <ScrollView ref={sidebarScrollRef} style={{ flex: 1 }} contentContainerStyle={{ paddingVertical: 8 }} scrollEventThrottle={0}>
+      <ScrollView
+        ref={sidebarScrollRef}
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingVertical: 8 }}
+        scrollEventThrottle={16}
+        onScroll={(e) => {
+          globalSidebarScrollY = e.nativeEvent.contentOffset.y;
+        }}
+      >
         {navItems.filter((n) => n.visible).map((item) => {
           const active = isActive(item.href);
           return (
@@ -107,6 +132,7 @@ export function AppShell({ children, title }: { children: React.ReactNode; title
       </ScrollView>
 
       <View style={[styles.bottomArea, { borderTopColor: p.sidebarBorder }]}>
+        {/* User Info Header */}
         <View style={styles.userRow}>
           <View style={[styles.avatar, { backgroundColor: p.primary }]}>
             <Text style={{ color: p.primaryText, fontWeight: '700' }}>
@@ -119,22 +145,42 @@ export function AppShell({ children, title }: { children: React.ReactNode; title
           </View>
         </View>
 
-        <TouchableOpacity onPress={() => setPwOpen(true)} style={styles.actionRow} activeOpacity={0.8}>
-          <KeyRound size={16} color={p.sidebarText} />
-          <Text style={[styles.actionText, { color: p.sidebarText }]}>Change Password</Text>
-        </TouchableOpacity>
+        {/* Hidden Options (Shown on Dropup Toggle) */}
+        {userMenuOpen && (
+          <View style={styles.menuContainer}>
+            <TouchableOpacity onPress={() => setPwOpen(true)} style={styles.actionRow} activeOpacity={0.8}>
+              <KeyRound size={16} color={p.sidebarText} />
+              <Text style={[styles.actionText, { color: p.sidebarText }]}>Change Password</Text>
+            </TouchableOpacity>
 
-        <TouchableOpacity onPress={toggle} style={styles.actionRow} activeOpacity={0.8}>
-          {mode === 'light' ? <Moon size={16} color={p.sidebarText} /> : <Sun size={16} color={p.sidebarText} />}
-          <Text style={[styles.actionText, { color: p.sidebarText }]}>{mode === 'light' ? 'Dark Mode' : 'Light Mode'}</Text>
-        </TouchableOpacity>
+            <TouchableOpacity onPress={toggle} style={styles.actionRow} activeOpacity={0.8}>
+              {mode === 'light' ? <Moon size={16} color={p.sidebarText} /> : <Sun size={16} color={p.sidebarText} />}
+              <Text style={[styles.actionText, { color: p.sidebarText }]}>{mode === 'light' ? 'Dark Mode' : 'Light Mode'}</Text>
+            </TouchableOpacity>
 
-        <ContactAdminButton />
+            <ContactAdminButton />
+          </View>
+        )}
 
-        <TouchableOpacity onPress={signOut} style={[styles.actionRow, { borderBottomWidth: 0 }]} activeOpacity={0.8}>
-          <LogOut size={16} color={p.sidebarText} />
-          <Text style={[styles.actionText, { color: p.sidebarText }]}>Sign Out</Text>
-        </TouchableOpacity>
+        {/* Sign Out Row + Dropup Toggle Button */}
+        <View style={styles.signOutContainer}>
+          <TouchableOpacity onPress={signOut} style={[styles.actionRow, { flex: 1, borderBottomWidth: 0 }]} activeOpacity={0.8}>
+            <LogOut size={16} color={p.sidebarText} />
+            <Text style={[styles.actionText, { color: p.sidebarText }]}>Sign Out</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => setUserMenuOpen(!userMenuOpen)}
+            style={[styles.dropupBtn, { backgroundColor: 'rgba(255,255,255,0.08)' }]}
+            activeOpacity={0.7}
+          >
+            {userMenuOpen ? (
+              <ChevronDown size={18} color={p.sidebarText} />
+            ) : (
+              <ChevronUp size={18} color={p.sidebarText} />
+            )}
+          </TouchableOpacity>
+        </View>
       </View>
     </View>
   );
@@ -270,6 +316,9 @@ const styles = StyleSheet.create({
   avatar: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
   userName: { fontSize: 14, fontWeight: '700' },
   userRole: { fontSize: 11, textTransform: 'capitalize' },
+  menuContainer: { marginVertical: 4 },
+  signOutContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  dropupBtn: { padding: 6, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   actionRow: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -13,11 +13,6 @@ import {
   cleanZone,
 } from '@/components/ReportCommon';
 
-// Exact Color Match / Theme Constants
-const DARK_GREEN_BG = '#09221b';
-const DARK_GREEN_BORDER = '#133d30';
-const NEON_GREEN_TEXT = '#10c980';
-
 type Tab = 'circle' | 'moza';
 
 interface OptionItem {
@@ -29,7 +24,7 @@ interface CustomVarietyAgg extends VarietyAgg {
   uniqueGrowers?: Set<string>;
 }
 
-// Table headers updated to include Total Variety and Total Non-Variety after Total Growers
+// Table headers
 const CUSTOM_HEADERS = [
   'Total Growers',
   'Total Variety',
@@ -46,7 +41,7 @@ const parseNum = (val: any) => {
   return isNaN(n) ? 0 : n;
 };
 
-// Pure functionality helper: Extract Master Passbook safely without breaking count
+// Helper: Extract Master Passbook safely
 const getMasterPassbook = (r: any, grower: any): string => {
   const mp = r?.master_passbook ?? grower?.master_passbook;
 
@@ -84,7 +79,7 @@ const combineCustomAgg = (a: VarietyAgg, b: VarietyAgg): CustomVarietyAgg => {
   return res;
 };
 
-// Custom addRow helper with robust fallbacks for Variety and Non-Variety fields
+// Custom addRow helper
 const addRowCustom = (agg: VarietyAgg, r: any) => {
   addRow(agg, r);
 
@@ -155,7 +150,7 @@ const addRowCustom = (agg: VarietyAgg, r: any) => {
   }
 };
 
-// Extract cells for display (supporting regular values or percentage rows)
+// Extract cells for display
 function getCustomAggCells(agg: CustomVarietyAgg, isPercentageRow = false): string[] {
   const ext = agg as any;
 
@@ -810,9 +805,13 @@ function VarietyTable({
   const cells = getCustomAggCells(totals);
   const percentageCells = getCustomAggCells(totals, true);
 
-  const totalBgColor = DARK_GREEN_BG;
-  const totalBorderColor = DARK_GREEN_BORDER;
-  const totalTextColor = NEON_GREEN_TEXT;
+  // Auto-detect theme status from palette
+  const isDark = Boolean(p?.isDark || p?.mode === 'dark' || (p?.surface && p.surface.toLowerCase().includes('1')));
+
+  // Dark Theme vs Light Theme Colors Matching Screenshots 1 & 2
+  const totalBgColor = isDark ? '#061d16' : '#d2ebd9';
+  const totalBorderColor = isDark ? '#133d30' : '#b8dfc5';
+  const totalTextColor = isDark ? '#10c980' : '#065f46';
 
   return (
     <View
@@ -895,7 +894,7 @@ function VarietyTable({
           })
         : null}
 
-      {/* Total / Grand Total Row */}
+      {/* Total / Grand Total Row - Dynamic Light & Dark Theme */}
       <View style={[styles.row, styles.totalRow, { backgroundColor: totalBgColor, borderBottomColor: totalBorderColor }]}>
         <Text style={[styles.cell, { flex: 1.5, color: totalTextColor, fontWeight: '800', fontSize: 14 }]}>
           {totalLabel}
@@ -921,7 +920,7 @@ function VarietyTable({
         })}
       </View>
 
-      {/* Percentage Row */}
+      {/* Percentage Row - Dynamic Light & Dark Theme */}
       <View style={[styles.row, styles.totalRow, { backgroundColor: totalBgColor, borderBottomWidth: 0 }]}>
         <Text style={[styles.cell, { flex: 1.5, color: totalTextColor, fontWeight: '800', fontSize: 13 }]}>
           Percentage (%)
