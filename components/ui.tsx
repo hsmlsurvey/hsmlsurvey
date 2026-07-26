@@ -22,7 +22,9 @@ export function usePalette(): Palette {
 export function Card({ children, style }: { children: React.ReactNode; style?: ViewStyle }) {
   const p = usePalette();
   return (
-    <View style={[styles.card, { backgroundColor: p.surface, borderColor: p.border }, style]}>{children}</View>
+    <View style={[styles.card, { backgroundColor: p.surface, borderColor: p.border }, style]}>
+      {children}
+    </View>
   );
 }
 
@@ -55,6 +57,7 @@ export function Input(props: InputProps) {
   const [focused, setFocused] = useState(false);
   const secure = props.secure && !show;
   const caption = props.caption || props.placeholder;
+
   return (
     <View
       style={[
@@ -115,6 +118,7 @@ interface BtnProps {
   style?: ViewStyle;
   small?: boolean;
 }
+
 export function Button({ title, onPress, variant = 'primary', loading, disabled, icon, style, small }: BtnProps) {
   const p = usePalette();
   const bg =
@@ -127,6 +131,7 @@ export function Button({ title, onPress, variant = 'primary', loading, disabled,
       : 'transparent';
   const fg = variant === 'soft' ? p.primary : variant === 'ghost' ? p.text : p.primaryText;
   const border = variant === 'ghost' ? p.border : 'transparent';
+
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -164,6 +169,7 @@ export function Badge({ label, tone = 'neutral' }: { label: string; tone?: 'neut
       ? p.primarySoft
       : p.surfaceAlt;
   const fg = tone === 'success' ? p.primary : tone === 'warning' ? p.warning : tone === 'error' ? p.error : tone === 'primary' ? p.primary : p.textMuted;
+
   return (
     <View style={[styles.badge, { backgroundColor: bg }]}>
       <Text style={[styles.badgeText, { color: fg }]}>{label}</Text>
@@ -227,6 +233,14 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     borderWidth: 1,
     padding: 16,
+    ...Platform.select({
+      web: {
+        boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.08)',
+      },
+      default: {
+        elevation: 2,
+      },
+    }),
   },
   sectionTitle: {
     fontSize: 18,
@@ -257,7 +271,11 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 15,
     paddingVertical: 6,
-    outlineWidth: 0,
+    ...Platform.select({
+      web: {
+        outlineStyle: 'none',
+      } as any,
+    }),
   },
   eyeBtn: {
     padding: 4,
@@ -288,7 +306,7 @@ const styles = StyleSheet.create({
   },
   btnTextSmall: {
     fontSize: 13,
-  fontWeight: '600',
+    fontWeight: '600',
   },
   badge: {
     paddingHorizontal: 8,
