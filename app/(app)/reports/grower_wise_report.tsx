@@ -11,6 +11,21 @@ interface OptionItem {
 
 const TABLE_WIDTH = 1465;
 
+// Helper function to check active status dynamically
+const isRecordActive = (item: any) => {
+  if (!item) return false;
+  if (item.is_active !== undefined && item.is_active !== null) {
+    return item.is_active === true || item.is_active === 1 || item.is_active === '1' || item.is_active === 'true';
+  }
+  if (item.active !== undefined && item.active !== null) {
+    return item.active === true || item.active === 1 || item.active === '1' || item.active === 'true';
+  }
+  if (item.status !== undefined && item.status !== null) {
+    return String(item.status).toLowerCase() === 'active';
+  }
+  return true; // Fallback if active property is not explicitly set
+};
+
 // Excel Cell Component with customizable borders
 function ExcelCell({
   width,
@@ -300,8 +315,25 @@ export default function Report4Screen() {
     return list;
   }, [zoneTypes]);
 
+  // Set of Active Circle Identifiers
+  const activeCircleKeys = useMemo(() => {
+    const keys = new Set<string>();
+    circles.forEach((c: any) => {
+      if (isRecordActive(c)) {
+        if (c.id !== undefined && c.id !== null) keys.add(String(c.id));
+        if (c.circle_code !== undefined && c.circle_code !== null) keys.add(String(c.circle_code));
+      }
+    });
+    return keys;
+  }, [circles]);
+
+  // Filtered Active Circles
   const filteredCircles = useMemo(() => {
     return circles.filter((c: any) => {
+      // 1. Must be active
+      if (!isRecordActive(c)) return false;
+
+      // 2. Zone filters
       const cZoneNum = cleanZone(c.zone_number) || zoneNumberMap.get(String(c.zone_number_id || c.zone_id || '')) || '';
       const cZoneType = String(c.zone_type || zoneTypeMap.get(String(c.zone_type_id || '')) || '').trim();
 
@@ -313,22 +345,31 @@ export default function Report4Screen() {
     );
   }, [circles, filters.zoneNumber, filters.zoneType, zoneNumberMap, zoneTypeMap]);
 
+  // Filtered Active Mozas belonging to Active Circles
   const filteredMozas = useMemo(() => {
     return mozas.filter((m: any) => {
-      const parentCircleInfo = circleZoneMap.get(String(m.circle_id || m.circle_code || ''));
+      // 1. Must be active Moza
+      if (!isRecordActive(m)) return false;
+
+      // 2. Must belong to an Active Circle
+      const circleKey = String(m.circle_id || m.circle_code || '');
+      if (circleKey && !activeCircleKeys.has(circleKey)) return false;
+
+      // 3. Zone & Circle Filters
+      const parentCircleInfo = circleZoneMap.get(circleKey);
       const mZoneNum = cleanZone(m.zone_number) || zoneNumberMap.get(String(m.zone_number_id || m.zone_id || '')) || parentCircleInfo?.zoneNumber || '';
       const mZoneType = String(m.zone_type || zoneTypeMap.get(String(m.zone_type_id || m.zone_id || '')) || parentCircleInfo?.zoneType || '').trim();
 
       if (filters.zoneNumber && mZoneNum && mZoneNum !== cleanZone(filters.zoneNumber)) return false;
       if (filters.zoneType && mZoneType && mZoneType.toLowerCase() !== filters.zoneType.toLowerCase()) return false;
       if ((filters as any).circle) {
-        if (String(m.circle_id || m.circle_code || '') !== String((filters as any).circle)) return false;
+        if (circleKey !== String((filters as any).circle)) return false;
       }
       return true;
     }).sort((a: any, b: any) =>
       String(a.moza_code || '').localeCompare(String(b.moza_code || ''), undefined, { numeric: true })
     );
-  }, [mozas, filters.zoneNumber, filters.zoneType, (filters as any).circle, zoneNumberMap, zoneTypeMap, circleZoneMap]);
+  }, [mozas, filters.zoneNumber, filters.zoneType, (filters as any).circle, zoneNumberMap, zoneTypeMap, circleZoneMap, activeCircleKeys]);
 
   const circleOptions = useMemo(() => {
     return filteredCircles.map((c: any, idx: number) => ({

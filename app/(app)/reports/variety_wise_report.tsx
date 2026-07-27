@@ -22,6 +22,35 @@ interface OptionItem {
   value: string;
 }
 
+// Helper function to safely stringify values without losing 0
+const safeStr = (val: any): string => {
+  if (val === null || val === undefined) return '';
+  return String(val).trim();
+};
+
+// Helper function to get valid ID or Code (preserves 0)
+const getCodeOrId = (...args: any[]): string => {
+  for (const arg of args) {
+    if (arg !== null && arg !== undefined && arg !== '') {
+      return String(arg).trim();
+    }
+  }
+  return '';
+};
+
+// Helper function to check if item (circle/moza) is active
+const isActiveItem = (item: any): boolean => {
+  if (!item) return false;
+  if (item.is_active !== undefined && item.is_active !== null) {
+    return item.is_active === true || item.is_active === 1 || item.is_active === '1' || item.is_active === 'true';
+  }
+  if (item.status !== undefined && item.status !== null) {
+    const s = String(item.status).trim().toLowerCase();
+    return s === 'active' || s === '1' || s === 'true' || s === 'a';
+  }
+  return true; // Default true if status field is not defined
+};
+
 // Helper function to parse numeric values safely
 const parseNum = (val: any): number => {
   if (typeof val === 'number') return isNaN(val) ? 0 : val;
@@ -42,7 +71,7 @@ function SearchableSelect({
 }: {
   label: string;
   options: OptionItem[];
-  value: string;
+  value: string | number;
   onChange: (val: string) => void;
   placeholder: string;
   searchPlaceholder: string;
@@ -51,13 +80,16 @@ function SearchableSelect({
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
 
-  const selectedOption = options.find((o) => o.value === value);
+  const strValue = safeStr(value);
+  const selectedOption = options.find((o) => String(o.value) === strValue);
 
   const filteredOptions = useMemo(() => {
     if (!search.trim()) return options;
     const q = search.toLowerCase();
     return options.filter((o) => o.label.toLowerCase().includes(q));
   }, [options, search]);
+
+  const isValueEmpty = strValue === '';
 
   return (
     <View style={[styles.filterItem, { position: 'relative', zIndex: isOpen ? 1000 : 1 }]}>
@@ -113,10 +145,10 @@ function SearchableSelect({
                 style={[
                   styles.optionRow,
                   { borderBottomColor: p.border },
-                  !value && { backgroundColor: p.primarySoft },
+                  isValueEmpty && { backgroundColor: p.primarySoft },
                 ]}
               >
-                <Text style={{ color: !value ? p.primary : p.textMuted, fontSize: 13, fontWeight: !value ? '700' : '400' }}>
+                <Text style={{ color: isValueEmpty ? p.primary : p.textMuted, fontSize: 13, fontWeight: isValueEmpty ? '700' : '400' }}>
                   {placeholder}
                 </Text>
               </TouchableOpacity>
@@ -127,12 +159,12 @@ function SearchableSelect({
                 </View>
               ) : (
                 filteredOptions.map((opt) => {
-                  const isSelected = opt.value === value;
+                  const isSelected = String(opt.value) === strValue;
                   return (
                     <TouchableOpacity
                       key={opt.value}
                       onPress={() => {
-                        onChange(opt.value);
+                        onChange(String(opt.value));
                         setIsOpen(false);
                         setSearch('');
                       }}
@@ -176,7 +208,7 @@ export default function Report3Screen() {
     const map = new Map<string, string>();
     zoneNumbers.forEach((z: any) => {
       const numStr = cleanZone(z.zone_number ?? z.number ?? z.id);
-      if (z.id) map.set(String(z.id), numStr);
+      if (z.id !== undefined && z.id !== null) map.set(String(z.id), numStr);
       if (numStr) map.set(numStr, numStr);
     });
     return map;
@@ -185,22 +217,34 @@ export default function Report3Screen() {
   const zoneTypeMap = useMemo(() => {
     const map = new Map<string, string>();
     zoneTypes.forEach((t: any) => {
-      const typeStr = String(t.zone_type ?? t.name ?? t.id ?? '').trim();
-      if (t.id) map.set(String(t.id), typeStr);
+      const typeStr = safeStr(t.zone_type ?? t.name ?? t.id);
+      if (t.id !== undefined && t.id !== null) map.set(String(t.id), typeStr);
       if (typeStr) map.set(typeStr.toLowerCase(), typeStr);
     });
     return map;
   }, [zoneTypes]);
 
+  // Set of active circle IDs / codes
+  const activeCircleKeysSet = useMemo(() => {
+    const set = new Set<string>();
+    circles.forEach((c: any) => {
+      if (isActiveItem(c)) {
+        if (c.id !== undefined && c.id !== null && c.id !== '') set.add(String(c.id));
+        if (c.circle_code !== undefined && c.circle_code !== null && c.circle_code !== '') set.add(String(c.circle_code));
+      }
+    });
+    return set;
+  }, [circles]);
+
   const circleZoneMap = useMemo(() => {
     const map = new Map<string, { zoneNumber: string; zoneType: string }>();
     circles.forEach((c: any) => {
-      const zNum = cleanZone(c.zone_number) || zoneNumberMap.get(String(c.zone_number_id || c.zone_id || '')) || '';
-      const zType = String(c.zone_type || zoneTypeMap.get(String(c.zone_type_id || '')) || '').trim();
+      const zNum = cleanZone(c.zone_number) || zoneNumberMap.get(safeStr(c.zone_number_id || c.zone_id)) || '';
+      const zType = safeStr(c.zone_type || zoneTypeMap.get(safeStr(c.zone_type_id)));
 
       const info = { zoneNumber: zNum, zoneType: zType };
-      if (c.id) map.set(String(c.id), info);
-      if (c.circle_code) map.set(String(c.circle_code), info);
+      if (c.id !== undefined && c.id !== null) map.set(String(c.id), info);
+      if (c.circle_code !== undefined && c.circle_code !== null) map.set(String(c.circle_code), info);
     });
     return map;
   }, [circles, zoneNumberMap, zoneTypeMap]);
@@ -224,7 +268,7 @@ export default function Report3Screen() {
     const list: string[] = [];
     zoneTypes.forEach((t: any) => {
       const val = typeof t === 'object' ? (t.zone_type ?? t.name ?? t.id) : t;
-      const s = String(val || '').trim();
+      const s = safeStr(val);
       if (s && !set.has(s.toLowerCase())) {
         set.add(s.toLowerCase());
         list.push(s);
@@ -233,10 +277,13 @@ export default function Report3Screen() {
     return list;
   }, [zoneTypes]);
 
+  // Filtered Circles (ONLY ACTIVE CIRCLES)
   const filteredCircles = useMemo(() => {
     return circles.filter((c: any) => {
-      const cZoneNum = cleanZone(c.zone_number) || zoneNumberMap.get(String(c.zone_number_id || c.zone_id || '')) || '';
-      const cZoneType = String(c.zone_type || zoneTypeMap.get(String(c.zone_type_id || '')) || '').trim();
+      if (!isActiveItem(c)) return false;
+
+      const cZoneNum = cleanZone(c.zone_number) || zoneNumberMap.get(safeStr(c.zone_number_id || c.zone_id)) || '';
+      const cZoneType = safeStr(c.zone_type || zoneTypeMap.get(safeStr(c.zone_type_id)));
 
       if (filters.zoneNumber && cZoneNum && cZoneNum !== cleanZone(filters.zoneNumber)) {
         return false;
@@ -246,19 +293,27 @@ export default function Report3Screen() {
       }
       return true;
     }).sort((a: any, b: any) =>
-      String(a.circle_code || '').localeCompare(String(b.circle_code || ''), undefined, { numeric: true })
+      safeStr(a.circle_code).localeCompare(safeStr(b.circle_code), undefined, { numeric: true })
     );
   }, [circles, filters.zoneNumber, filters.zoneType, zoneNumberMap, zoneTypeMap]);
 
+  // Filtered Mozas (ONLY ACTIVE MOZAS BELONGING TO ACTIVE CIRCLES)
   const filteredMozas = useMemo(() => {
     return mozas.filter((m: any) => {
-      const parentCircleInfo = circleZoneMap.get(String(m.circle_id || m.circle_code || ''));
+      if (!isActiveItem(m)) return false;
+
+      const circleKey = getCodeOrId(m.circle_id, m.circle_code);
+      if (circleKey && !activeCircleKeysSet.has(circleKey)) {
+        return false;
+      }
+
+      const parentCircleInfo = circleZoneMap.get(circleKey);
 
       const mZoneNum = cleanZone(m.zone_number) ||
-                       zoneNumberMap.get(String(m.zone_number_id || m.zone_id || '')) ||
+                       zoneNumberMap.get(safeStr(m.zone_number_id || m.zone_id)) ||
                        parentCircleInfo?.zoneNumber || '';
 
-      const mZoneType = String(m.zone_type || zoneTypeMap.get(String(m.zone_type_id || '')) || parentCircleInfo?.zoneType || '').trim();
+      const mZoneType = safeStr(m.zone_type || zoneTypeMap.get(safeStr(m.zone_type_id)) || parentCircleInfo?.zoneType);
 
       if (filters.zoneNumber && mZoneNum && mZoneNum !== cleanZone(filters.zoneNumber)) {
         return false;
@@ -266,36 +321,46 @@ export default function Report3Screen() {
       if (filters.zoneType && mZoneType && mZoneType.toLowerCase() !== filters.zoneType.toLowerCase()) {
         return false;
       }
-      if ((filters as any).circle) {
+      if ((filters as any).circle !== '' && (filters as any).circle !== undefined && (filters as any).circle !== null) {
         const targetCircle = String((filters as any).circle);
-        if (String(m.circle_id || m.circle_code || '') !== targetCircle) {
+        const mCircleId = safeStr(m.circle_id);
+        const mCircleCode = safeStr(m.circle_code);
+        if (mCircleId !== targetCircle && mCircleCode !== targetCircle) {
           return false;
         }
       }
       return true;
     }).sort((a: any, b: any) =>
-      String(a.moza_code || '').localeCompare(String(b.moza_code || ''), undefined, { numeric: true })
+      safeStr(a.moza_code).localeCompare(safeStr(b.moza_code), undefined, { numeric: true })
     );
-  }, [mozas, filters.zoneNumber, filters.zoneType, (filters as any).circle, zoneNumberMap, zoneTypeMap, circleZoneMap]);
+  }, [mozas, activeCircleKeysSet, filters.zoneNumber, filters.zoneType, (filters as any).circle, zoneNumberMap, zoneTypeMap, circleZoneMap]);
 
   const circleOptions = useMemo(() => {
-    return filteredCircles.map((c: any, idx: number) => ({
-      label: `[${c.circle_code || '-'}] ${c.circle_name || 'Unknown'}`,
-      value: String(c.id ?? c.circle_code ?? idx),
-    }));
+    return filteredCircles.map((c: any, idx: number) => {
+      const codeStr = safeStr(c.circle_code) !== '' ? c.circle_code : '-';
+      const val = getCodeOrId(c.id, c.circle_code) || String(idx);
+      return {
+        label: `[${codeStr}] ${c.circle_name || 'Unknown'}`,
+        value: val,
+      };
+    });
   }, [filteredCircles]);
 
   const mozaOptions = useMemo(() => {
-    return filteredMozas.map((m: any, idx: number) => ({
-      label: `[${m.moza_code || '-'}] ${m.moza_name || 'Unknown'}`,
-      value: String(m.id ?? m.moza_code ?? idx),
-    }));
+    return filteredMozas.map((m: any, idx: number) => {
+      const codeStr = safeStr(m.moza_code) !== '' ? m.moza_code : '-';
+      const val = getCodeOrId(m.id, m.moza_code) || String(idx);
+      return {
+        label: `[${codeStr}] ${m.moza_name || 'Unknown'}`,
+        value: val,
+      };
+    });
   }, [filteredMozas]);
 
   const filtered = useMemo(() => {
     return (rows || []).filter((r: any) => {
-      const rZoneNum = cleanZone(r.zone_number) || zoneNumberMap.get(String(r.zone_number_id || '')) || '';
-      const rZoneType = String(r.zone_type || zoneTypeMap.get(String(r.zone_type_id || '')) || '').trim();
+      const rZoneNum = cleanZone(r.zone_number) || zoneNumberMap.get(safeStr(r.zone_number_id)) || '';
+      const rZoneType = safeStr(r.zone_type || zoneTypeMap.get(safeStr(r.zone_type_id)));
 
       if (filters.zoneNumber && rZoneNum !== cleanZone(filters.zoneNumber)) {
         return false;
@@ -303,15 +368,19 @@ export default function Report3Screen() {
       if (filters.zoneType && rZoneType.toLowerCase() !== filters.zoneType.toLowerCase()) {
         return false;
       }
-      if ((filters as any).circle) {
+      if ((filters as any).circle !== '' && (filters as any).circle !== undefined && (filters as any).circle !== null) {
         const selC = String((filters as any).circle);
-        if (String(r.circle_id || '') !== selC && String(r.circle_code || '') !== selC) {
+        const rCircleId = safeStr(r.circle_id);
+        const rCircleCode = safeStr(r.circle_code);
+        if (rCircleId !== selC && rCircleCode !== selC) {
           return false;
         }
       }
-      if ((filters as any).moza) {
+      if ((filters as any).moza !== '' && (filters as any).moza !== undefined && (filters as any).moza !== null) {
         const selM = String((filters as any).moza);
-        if (String(r.moza_id || '') !== selM && String(r.moza_code || '') !== selM) {
+        const rMozaId = safeStr(r.moza_id);
+        const rMozaCode = safeStr(r.moza_code);
+        if (rMozaId !== selM && rMozaCode !== selM) {
           return false;
         }
       }
@@ -325,11 +394,11 @@ export default function Report3Screen() {
       { circleName: string; circleCode: string; zoneName: string; agg: VarietyAgg }
     >();
     filtered.forEach((r: any) => {
-      const key = String(r.circle_id || r.circle_code || '__none__');
+      const key = getCodeOrId(r.circle_id, r.circle_code) || '__none__';
       if (!map.has(key)) {
         map.set(key, {
-          circleName: r.circle_name || 'Unknown',
-          circleCode: String(r.circle_code || ''),
+          circleName: safeStr(r.circle_name) || 'Unknown',
+          circleCode: safeStr(r.circle_code),
           zoneName: r.zone_number ? `Zone ${cleanZone(r.zone_number)} (${r.zone_type || ''})` : '-',
           agg: newAgg(),
         });
@@ -338,7 +407,7 @@ export default function Report3Screen() {
     });
 
     return Array.from(map.values()).sort((a, b) => {
-      if (a.circleCode && b.circleCode) {
+      if (a.circleCode !== '' && b.circleCode !== '') {
         return a.circleCode.localeCompare(b.circleCode, undefined, { numeric: true });
       }
       return a.circleName.localeCompare(b.circleName, undefined, { numeric: true });
@@ -357,21 +426,21 @@ export default function Report3Screen() {
     >();
 
     filtered.forEach((r: any) => {
-      const ckey = String(r.circle_id || r.circle_code || '__none__');
+      const ckey = getCodeOrId(r.circle_id, r.circle_code) || '__none__';
       if (!map.has(ckey)) {
         map.set(ckey, {
-          circleName: r.circle_name || 'Unknown',
-          circleCode: String(r.circle_code || ''),
+          circleName: safeStr(r.circle_name) || 'Unknown',
+          circleCode: safeStr(r.circle_code),
           zoneName: r.zone_number ? `Zone ${cleanZone(r.zone_number)} (${r.zone_type || ''})` : '-',
           mozaMap: new Map(),
         });
       }
       const c = map.get(ckey)!;
-      const mkey = String(r.moza_id || r.moza_code || '__none__');
+      const mkey = getCodeOrId(r.moza_id, r.moza_code) || '__none__';
       if (!c.mozaMap.has(mkey)) {
         c.mozaMap.set(mkey, {
-          mozaName: r.moza_name || 'Unknown',
-          mozaCode: String(r.moza_code || ''),
+          mozaName: safeStr(r.moza_name) || 'Unknown',
+          mozaCode: safeStr(r.moza_code),
           agg: newAgg(),
         });
       }
@@ -384,14 +453,14 @@ export default function Report3Screen() {
         circleCode: c.circleCode,
         zoneName: c.zoneName,
         mozas: Array.from(c.mozaMap.values()).sort((a, b) => {
-          if (a.mozaCode && b.mozaCode) {
+          if (a.mozaCode !== '' && b.mozaCode !== '') {
             return a.mozaCode.localeCompare(b.mozaCode, undefined, { numeric: true });
           }
           return a.mozaName.localeCompare(b.mozaName, undefined, { numeric: true });
         }),
       }))
       .sort((a, b) => {
-        if (a.circleCode && b.circleCode) {
+        if (a.circleCode !== '' && b.circleCode !== '') {
           return a.circleCode.localeCompare(b.circleCode, undefined, { numeric: true });
         }
         return a.circleName.localeCompare(b.circleName, undefined, { numeric: true });
@@ -456,7 +525,7 @@ export default function Report3Screen() {
               placeholder={`All Circles (${circleOptions.length})`}
               searchPlaceholder="Search Circle..."
               options={circleOptions}
-              value={(filters as any).circle || ''}
+              value={(filters as any).circle ?? ''}
               onChange={(val) => setFilters((prev: any) => ({ ...prev, circle: val, moza: '' }))}
               palette={p}
             />
@@ -466,7 +535,7 @@ export default function Report3Screen() {
               placeholder={`All Mozas (${mozaOptions.length})`}
               searchPlaceholder="Search Moza..."
               options={mozaOptions}
-              value={(filters as any).moza || ''}
+              value={(filters as any).moza ?? ''}
               onChange={(val) => setFilters((prev: any) => ({ ...prev, moza: val }))}
               palette={p}
             />
@@ -498,7 +567,7 @@ export default function Report3Screen() {
           <Card>
             <EmptyState message="Loading report data (fetching all records)..." />
           </Card>
-        ) : ran || Object.values(filters).some(Boolean) ? (
+        ) : ran || Object.values(filters).some((v) => v !== '' && v !== null && v !== undefined) ? (
           <>
             <View style={[styles.tabBar, { borderBottomColor: p.border }]}>
               <TouchableOpacity
@@ -627,22 +696,18 @@ function VarietyTable({
   totalsOnly?: boolean;
 }) {
   const totalCells = aggCells(totals);
-  
-  // Grand Total Area = Row ka aakhri cell value
   const grandTotalArea = parseNum(totalCells[totalCells.length - 1]);
 
-  // Specific Columns Styling (Colors & Weight)
   const getColumnStyle = (headerName: string) => {
     const h = headerName.trim().toUpperCase();
-    if (h === 'T.V') return { color: '#38bdf8', fontWeight: '800' as const }; // Bright Blue
-    if (h === 'T.NV') return { color: '#f97316', fontWeight: '800' as const }; // Vibrant Orange
-    if (h === 'G TOTAL' || h === 'G.TOTAL' || h === 'TOTAL') return { color: '#10b981', fontWeight: '800' as const }; // Emerald Green
+    if (h === 'T.V') return { color: '#38bdf8', fontWeight: '800' as const };
+    if (h === 'T.NV') return { color: '#f97316', fontWeight: '800' as const };
+    if (h === 'G TOTAL' || h === 'G.TOTAL' || h === 'TOTAL') return { color: '#10b981', fontWeight: '800' as const };
     return {};
   };
 
   return (
     <View style={{ borderWidth: 1, borderColor: p.border, borderRadius: 10, overflow: 'hidden' }}>
-      {/* Table Header */}
       <View style={[styles.row, { backgroundColor: p.surfaceAlt, borderBottomColor: p.border, paddingVertical: 10 }]}>
         <Text style={[styles.cell, { flex: 1.4, color: p.textMuted, fontWeight: '700', fontSize: 12 }]}>
           {labelHeader}
@@ -664,7 +729,6 @@ function VarietyTable({
         })}
       </View>
 
-      {/* Data Rows */}
       {!totalsOnly
         ? rows.map((r, i) => {
             const rowCells = aggCells(r.agg);
@@ -700,7 +764,6 @@ function VarietyTable({
           })
         : null}
 
-      {/* Totals Row */}
       <View style={[styles.row, { backgroundColor: p.primarySoft, borderBottomColor: p.border, paddingVertical: 10 }]}>
         <Text style={[styles.cell, { flex: 1.4, color: p.primary, fontWeight: '800', fontSize: 13 }]}>
           {totalLabel}
@@ -718,7 +781,6 @@ function VarietyTable({
         ))}
       </View>
 
-      {/* Percentage Row (Divided by Grand Total Area) */}
       <View style={[styles.row, { backgroundColor: p.surfaceAlt, borderBottomWidth: 0, paddingVertical: 10 }]}>
         <Text style={[styles.cell, { flex: 1.4, color: p.textMuted, fontWeight: '700', fontSize: 12 }]}>
           Percentage (%)

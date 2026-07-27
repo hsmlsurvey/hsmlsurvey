@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Switch, Platform } from 'react-native';
 import { Plus, Pencil, Trash2, X, ChevronUp, ChevronDown } from 'lucide-react-native';
 import { AppShell } from '@/components/AppShell';
 import { usePalette, Input, Button, Card, EmptyState, ErrorText } from '@/components/ui';
@@ -8,10 +8,11 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { ZoneNumber, ZoneType, Circle } from '@/types';
 
-type SortKey = 'circle_code' | 'circle_name' | 'zone_number' | 'zone_type';
+type SortKey = 'circle_code' | 'circle_name' | 'zone_number' | 'zone_type' | 'status';
 
 interface ExtendedCircle extends Circle {
   circle_code?: string;
+  status?: boolean;
 }
 
 export default function CirclesScreen() {
@@ -27,12 +28,14 @@ export default function CirclesScreen() {
   const [circleName, setCircleName] = useState('');
   const [zoneNumberId, setZoneNumberId] = useState('');
   const [zoneTypeId, setZoneTypeId] = useState('');
+  const [isActive, setIsActive] = useState<boolean>(true);
   const [formError, setFormError] = useState('');
   const [saving, setSaving] = useState(false);
 
   // Filter States
   const [selectedZoneNumber, setSelectedZoneNumber] = useState<string>('');
   const [selectedZoneType, setSelectedZoneType] = useState<string>('');
+  const [selectedStatus, setSelectedStatus] = useState<string>('active'); // 'all' | 'active' | 'inactive'
 
   // Sorting state
   const [sort, setSort] = useState<{ key: SortKey; dir: 'asc' | 'desc' } | null>(null);
@@ -63,6 +66,7 @@ export default function CirclesScreen() {
       const enrichedRows: ExtendedCircle[] = (cRes.data || []).map((c: any) => ({
         ...c,
         circle_code: c.circle_code || codeMap[c.id] || '-',
+        status: c.status ?? true, // Default to true if undefined
       }));
 
       setRows(enrichedRows);
@@ -86,14 +90,19 @@ export default function CirclesScreen() {
     });
   };
 
-  // Filtered Rows (Zone # and Zone Type Filter Logic)
+  // Filtered Rows (Zone #, Zone Type, and Status Filter Logic)
   const filteredRows = useMemo(() => {
     return rows.filter((r) => {
       const matchesZn = !selectedZoneNumber || r.zone_number_id === selectedZoneNumber;
       const matchesZt = !selectedZoneType || r.zone_type_id === selectedZoneType;
-      return matchesZn && matchesZt;
+      
+      let matchesStatus = true;
+      if (selectedStatus === 'active') matchesStatus = r.status === true;
+      if (selectedStatus === 'inactive') matchesStatus = r.status === false;
+
+      return matchesZn && matchesZt && matchesStatus;
     });
-  }, [rows, selectedZoneNumber, selectedZoneType]);
+  }, [rows, selectedZoneNumber, selectedZoneType, selectedStatus]);
 
   // Memoized Sorted Rows
   const sortedRows = useMemo(() => {
@@ -114,6 +123,9 @@ export default function CirclesScreen() {
       } else if (sort.key === 'zone_type') {
         va = zoneTypes.find((z) => z.id === a.zone_type_id)?.zone_type || a.zone_types?.zone_type || '';
         vb = zoneTypes.find((z) => z.id === b.zone_type_id)?.zone_type || b.zone_types?.zone_type || '';
+      } else if (sort.key === 'status') {
+        va = a.status ? 'Active' : 'Inactive';
+        vb = b.status ? 'Active' : 'Inactive';
       }
 
       const cmp = va.localeCompare(vb, undefined, { numeric: true, sensitivity: 'base' });
@@ -124,6 +136,7 @@ export default function CirclesScreen() {
   const openAdd = () => {
     setEditingId(null);
     setCircleName(''); setZoneNumberId(''); setZoneTypeId('');
+    setIsActive(true);
     setFormError('');
     setModalOpen(true);
   };
@@ -133,6 +146,7 @@ export default function CirclesScreen() {
     setCircleName(row.circle_name);
     setZoneNumberId(row.zone_number_id || '');
     setZoneTypeId(row.zone_type_id || '');
+    setIsActive(row.status ?? true);
     setFormError('');
     setModalOpen(true);
   };
@@ -157,6 +171,7 @@ export default function CirclesScreen() {
         circle_name: circleName.trim(),
         zone_number_id: zoneNumberId || null,
         zone_type_id: zoneTypeId || null,
+        status: isActive,
       };
       if (editingId) {
         const { error } = await supabase.from('circles').update(payload).eq('id', editingId);
@@ -174,9 +189,13 @@ export default function CirclesScreen() {
     }
   };
 
-  const updateInline = async (row: ExtendedCircle, field: 'zone_number_id' | 'zone_type_id', value: string) => {
+  const updateInline = async (row: ExtendedCircle, field: 'zone_number_id' | 'zone_type_id' | 'status', value: any) => {
     try {
-      const { error } = await supabase.from('circles').update({ [field]: value || null }).eq('id', row.id);
+      const valToSave = field === 'status' 
+        ? (typeof value === 'boolean' ? value : value === 'true') 
+        : (value || null);
+        
+      const { error } = await supabase.from('circles').update({ [field]: valToSave }).eq('id', row.id);
       if (error) throw error;
       load();
     } catch (e: any) {
@@ -189,6 +208,13 @@ export default function CirclesScreen() {
 
   const filterZnOpts = [{ value: '', label: 'All Zone #' }, ...znOpts];
   const filterZtOpts = [{ value: '', label: 'All Zone Types' }, ...ztOpts];
+
+  // Top Filter Options
+  const filterStatusOpts = [
+    { value: 'all', label: 'All Status' },
+    { value: 'active', label: 'Active' },
+    { value: 'inactive', label: 'Inactive' },
+  ];
 
   const renderSortIcon = (key: SortKey) => {
     if (sort?.key !== key) return null;
@@ -210,8 +236,18 @@ export default function CirclesScreen() {
           </View>
 
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            {/* Status Filter (All / Active / Inactive) */}
+            <View style={{ width: 140 }}>
+              <NativeSelect
+                value={selectedStatus}
+                placeholder="Status"
+                options={filterStatusOpts}
+                onChange={(v) => setSelectedStatus(v)}
+              />
+            </View>
+
             {/* Zone # Search / Filter */}
-            <View style={{ width: 160 }}>
+            <View style={{ width: 150 }}>
               <NativeSelect
                 value={selectedZoneNumber}
                 placeholder="All Zone #"
@@ -221,7 +257,7 @@ export default function CirclesScreen() {
             </View>
 
             {/* Zone Type Search / Filter */}
-            <View style={{ width: 170 }}>
+            <View style={{ width: 160 }}>
               <NativeSelect
                 value={selectedZoneType}
                 placeholder="All Zone Types"
@@ -243,12 +279,12 @@ export default function CirclesScreen() {
             <ScrollView horizontal={false} style={{ flex: 1 }}>
               {/* Table Header */}
               <View style={[styles.headerRow, { backgroundColor: p.surfaceAlt, borderBottomColor: p.border }]}>
-                <Text style={[styles.headCell, { color: p.textMuted, width: 60 }]}>S.#</Text>
+                <Text style={[styles.headCell, { color: p.textMuted, width: 50 }]}>S.#</Text>
 
                 {/* Circle Code Header */}
                 <TouchableOpacity
                   onPress={() => toggleSort('circle_code')}
-                  style={[styles.sortHeadCell, { width: 110 }]}
+                  style={[styles.sortHeadCell, { width: 100 }]}
                   activeOpacity={0.7}
                 >
                   <Text style={[styles.headCell, { color: sort?.key === 'circle_code' ? p.primary : p.textMuted }]}>
@@ -260,7 +296,7 @@ export default function CirclesScreen() {
                 {/* Circle Name Header */}
                 <TouchableOpacity
                   onPress={() => toggleSort('circle_name')}
-                  style={[styles.sortHeadCell, { width: 200 }]}
+                  style={[styles.sortHeadCell, { width: 180 }]}
                   activeOpacity={0.7}
                 >
                   <Text style={[styles.headCell, { color: sort?.key === 'circle_name' ? p.primary : p.textMuted }]}>Circle</Text>
@@ -270,7 +306,7 @@ export default function CirclesScreen() {
                 {/* Zone # Header */}
                 <TouchableOpacity
                   onPress={() => toggleSort('zone_number')}
-                  style={[styles.sortHeadCell, { width: 180 }]}
+                  style={[styles.sortHeadCell, { width: 150 }]}
                   activeOpacity={0.7}
                 >
                   <Text style={[styles.headCell, { color: sort?.key === 'zone_number' ? p.primary : p.textMuted }]}>Zone #</Text>
@@ -280,11 +316,21 @@ export default function CirclesScreen() {
                 {/* Zone Type Header */}
                 <TouchableOpacity
                   onPress={() => toggleSort('zone_type')}
-                  style={[styles.sortHeadCell, { width: 180 }]}
+                  style={[styles.sortHeadCell, { width: 150 }]}
                   activeOpacity={0.7}
                 >
                   <Text style={[styles.headCell, { color: sort?.key === 'zone_type' ? p.primary : p.textMuted }]}>Zone Type</Text>
                   {renderSortIcon('zone_type')}
+                </TouchableOpacity>
+
+                {/* Status Header */}
+                <TouchableOpacity
+                  onPress={() => toggleSort('status')}
+                  style={[styles.sortHeadCell, { width: 130 }]}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.headCell, { color: sort?.key === 'status' ? p.primary : p.textMuted }]}>Status</Text>
+                  {renderSortIcon('status')}
                 </TouchableOpacity>
 
                 <Text style={[styles.headCell, { color: p.textMuted, width: 80, textAlign: 'right' }]}>Actions</Text>
@@ -307,24 +353,24 @@ export default function CirclesScreen() {
                     ]}
                   >
                     {/* Serial Number */}
-                    <View style={{ width: 60, paddingHorizontal: 8, justifyContent: 'center' }}>
+                    <View style={{ width: 50, paddingHorizontal: 8, justifyContent: 'center' }}>
                       <Text style={{ fontWeight: '600', color: p.text, fontSize: 13 }}>{idx + 1}</Text>
                     </View>
 
                     {/* Circle Code */}
-                    <View style={{ width: 110, paddingHorizontal: 8, justifyContent: 'center' }}>
+                    <View style={{ width: 100, paddingHorizontal: 8, justifyContent: 'center' }}>
                       <Text style={{ fontWeight: '700', color: p.primary, fontSize: 13 }}>
                         {row.circle_code || '-'}
                       </Text>
                     </View>
 
                     {/* Circle Name */}
-                    <View style={{ width: 200, paddingHorizontal: 8, justifyContent: 'center' }}>
+                    <View style={{ width: 180, paddingHorizontal: 8, justifyContent: 'center' }}>
                       <Text style={{ fontWeight: '700', color: p.text, fontSize: 13 }}>{row.circle_name}</Text>
                     </View>
 
                     {/* Inline Zone # Selection */}
-                    <View style={{ width: 180, paddingHorizontal: 4, paddingVertical: 4, zIndex: 2 }}>
+                    <View style={{ width: 150, paddingHorizontal: 4, paddingVertical: 4, zIndex: 3 }}>
                       {can('circles', 'update') ? (
                         <NativeSelect
                           value={row.zone_number_id || ''}
@@ -338,7 +384,7 @@ export default function CirclesScreen() {
                     </View>
 
                     {/* Inline Zone Type Selection */}
-                    <View style={{ width: 180, paddingHorizontal: 4, paddingVertical: 4, zIndex: 1 }}>
+                    <View style={{ width: 150, paddingHorizontal: 4, paddingVertical: 4, zIndex: 2 }}>
                       {can('circles', 'update') ? (
                         <NativeSelect
                           value={row.zone_type_id || ''}
@@ -348,6 +394,28 @@ export default function CirclesScreen() {
                         />
                       ) : (
                         <Text style={{ color: p.text, fontSize: 13 }}>{row.zone_types?.zone_type || '-'}</Text>
+                      )}
+                    </View>
+
+                    {/* TABLE ROW: INLINE STATUS TOGGLE BUTTON */}
+                    <View style={{ width: 130, paddingHorizontal: 8, paddingVertical: 4, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      {can('circles', 'update') ? (
+                        <>
+                          <Switch
+                            value={row.status ?? true}
+                            onValueChange={(val) => updateInline(row, 'status', val)}
+                            trackColor={{ false: p.border, true: p.primarySoft }}
+                            thumbColor={Platform.OS === 'ios' ? undefined : ((row.status ?? true) ? p.primary : p.textMuted)}
+                            ios_backgroundColor={p.border}
+                          />
+                          <Text style={{ color: row.status ? p.primary : p.error, fontWeight: '600', fontSize: 12 }}>
+                            {row.status ? 'Active' : 'Inactive'}
+                          </Text>
+                        </>
+                      ) : (
+                        <Text style={{ color: row.status ? p.primary : p.error, fontWeight: '600', fontSize: 13 }}>
+                          {row.status ? 'Active' : 'Inactive'}
+                        </Text>
                       )}
                     </View>
 
@@ -368,7 +436,7 @@ export default function CirclesScreen() {
         </Card>
       </View>
 
-      {/* Modal */}
+      {/* Modal Form */}
       <Modal visible={modalOpen} transparent animationType="fade" onRequestClose={() => setModalOpen(false)}>
         <View style={styles.modalOverlay}>
           <View style={[styles.modalCard, { backgroundColor: p.surface, borderColor: p.border }]}>
@@ -376,12 +444,32 @@ export default function CirclesScreen() {
               <Text style={[styles.modalTitle, { color: p.text }]}>{editingId ? 'Edit Circle' : 'Add Circle'}</Text>
               <TouchableOpacity onPress={() => setModalOpen(false)}><X size={18} color={p.textMuted} /></TouchableOpacity>
             </View>
-            <ScrollView style={{ maxHeight: 480 }} contentContainerStyle={{ gap: 10, padding: 4 }}>
+            
+            <ScrollView style={{ maxHeight: 480 }} contentContainerStyle={{ gap: 12, padding: 4 }}>
               <Input value={circleName} onChangeText={setCircleName} placeholder="Circle Name" />
               <NativeSelect value={zoneNumberId} placeholder="Select Zone #" options={znOpts} onChange={setZoneNumberId} />
               <NativeSelect value={zoneTypeId} placeholder="Select Zone Type" options={ztOpts} onChange={setZoneTypeId} />
+              
+              {/* MODAL FORM: STATUS TOGGLE BUTTON */}
+              <View style={[styles.toggleContainer, { borderColor: p.border, backgroundColor: p.surfaceAlt }]}>
+                <View>
+                  <Text style={[styles.toggleLabel, { color: p.text }]}>Circle Status</Text>
+                  <Text style={{ fontSize: 12, color: isActive ? p.primary : p.error, fontWeight: '600' }}>
+                    {isActive ? 'Active (Will show in reports)' : 'Inactive (Will be hidden)'}
+                  </Text>
+                </View>
+                <Switch
+                  value={isActive}
+                  onValueChange={setIsActive}
+                  trackColor={{ false: p.border, true: p.primarySoft }}
+                  thumbColor={Platform.OS === 'ios' ? undefined : (isActive ? p.primary : p.textMuted)}
+                  ios_backgroundColor={p.border}
+                />
+              </View>
+
               {formError ? <ErrorText message={formError} /> : null}
-              <View style={{ flexDirection: 'row', gap: 10, marginTop: 6 }}>
+              
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
                 <Button title="Cancel" onPress={() => setModalOpen(false)} variant="ghost" style={{ flex: 1 }} />
                 <Button title={editingId ? 'Update' : 'Save'} onPress={save} loading={saving} style={{ flex: 1 }} />
               </View>
@@ -406,4 +494,14 @@ const styles = StyleSheet.create({
   modalCard: { width: '100%', maxWidth: 520, borderRadius: 14, borderWidth: 1, padding: 20 },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   modalTitle: { fontSize: 18, fontWeight: '700' },
+  toggleContainer: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'center', 
+    padding: 12, 
+    borderRadius: 10, 
+    borderWidth: 1, 
+    marginTop: 4 
+  },
+  toggleLabel: { fontSize: 14, fontWeight: '700', marginBottom: 2 },
 });

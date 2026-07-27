@@ -14,6 +14,14 @@ function num(v: any): number {
   return Number(v ?? 0);
 }
 
+// Helper: Checks active state using 'status' column
+function isActive(item: any): boolean {
+  if (!item) return true;
+  if (item.status === undefined || item.status === null || item.status === '') return true;
+  const s = String(item.status).toLowerCase().trim();
+  return s === 'active' || s === '1' || s === 'true';
+}
+
 const CATEGORIES = [
   { label: '0.1 - 5', min: 0.1, max: 5 },
   { label: '5.1 - 10', min: 5.1, max: 10 },
@@ -194,6 +202,7 @@ export default function Report2Screen() {
   const zoneNumberMap = useMemo(() => {
     const map = new Map<string, string>();
     zoneNumbers.forEach((z: any) => {
+      if (!isActive(z)) return;
       const numStr = cleanZone(z.zone_number ?? z.number ?? z.id);
       if (z.id) map.set(String(z.id), numStr);
       if (numStr) map.set(numStr, numStr);
@@ -204,6 +213,7 @@ export default function Report2Screen() {
   const zoneTypeMap = useMemo(() => {
     const map = new Map<string, string>();
     zoneTypes.forEach((t: any) => {
+      if (!isActive(t)) return;
       const typeStr = String(t.zone_type ?? t.name ?? t.id ?? '').trim();
       if (t.id) map.set(String(t.id), typeStr);
       if (typeStr) map.set(typeStr.toLowerCase(), typeStr);
@@ -211,9 +221,22 @@ export default function Report2Screen() {
     return map;
   }, [zoneTypes]);
 
+  // Set of Active Circles (By ID and Circle Code)
+  const activeCircleKeys = useMemo(() => {
+    const set = new Set<string>();
+    circles.forEach((c: any) => {
+      if (isActive(c)) {
+        if (c.id !== undefined && c.id !== null) set.add(String(c.id));
+        if (c.circle_code !== undefined && c.circle_code !== null) set.add(String(c.circle_code));
+      }
+    });
+    return set;
+  }, [circles]);
+
   const circleZoneMap = useMemo(() => {
     const map = new Map<string, { zoneNumber: string; zoneType: string }>();
     circles.forEach((c: any) => {
+      if (!isActive(c)) return;
       const zNum = cleanZone(c.zone_number) || zoneNumberMap.get(String(c.zone_number_id || c.zone_id || '')) || '';
       const zType = String(c.zone_type || zoneTypeMap.get(String(c.zone_type_id || '')) || '').trim();
       
@@ -229,6 +252,7 @@ export default function Report2Screen() {
     const set = new Set<string>();
     const list: { val: string; display: string }[] = [];
     zoneNumbers.forEach((z: any) => {
+      if (!isActive(z)) return;
       const raw = typeof z === 'object' ? (z.zone_number ?? z.number ?? z.id) : z;
       const c = cleanZone(raw);
       if (c && !set.has(c)) {
@@ -243,6 +267,7 @@ export default function Report2Screen() {
     const set = new Set<string>();
     const list: string[] = [];
     zoneTypes.forEach((t: any) => {
+      if (!isActive(t)) return;
       const val = typeof t === 'object' ? (t.zone_type ?? t.name ?? t.id) : t;
       const s = String(val || '').trim();
       if (s && !set.has(s.toLowerCase())) {
@@ -256,6 +281,8 @@ export default function Report2Screen() {
   // Filter Circles for Dropdown
   const filteredCircles = useMemo(() => {
     return circles.filter((c: any) => {
+      if (!isActive(c)) return false;
+
       const cZoneNum = cleanZone(c.zone_number) || zoneNumberMap.get(String(c.zone_number_id || c.zone_id || '')) || '';
       const cZoneType = String(c.zone_type || zoneTypeMap.get(String(c.zone_type_id || '')) || '').trim();
 
@@ -271,10 +298,19 @@ export default function Report2Screen() {
     );
   }, [circles, filters.zoneNumber, filters.zoneType, zoneNumberMap, zoneTypeMap]);
 
-  // Filter Mozas for Dropdown
+  // Filter Mozas for Dropdown (Only show Mozas belonging to ACTIVE Circles)
   const filteredMozas = useMemo(() => {
     return mozas.filter((m: any) => {
-      const parentCircleInfo = circleZoneMap.get(String(m.circle_id || m.circle_code || ''));
+      // 1. Check if Moza itself is active
+      if (!isActive(m)) return false;
+
+      // 2. Check if Parent Circle is active
+      const parentCircleKey = String(m.circle_id || m.circle_code || '');
+      if (parentCircleKey && !activeCircleKeys.has(parentCircleKey)) {
+        return false;
+      }
+
+      const parentCircleInfo = circleZoneMap.get(parentCircleKey);
       
       const mZoneNum = cleanZone(m.zone_number) || 
                       zoneNumberMap.get(String(m.zone_number_id || m.zone_id || '')) || 
@@ -298,7 +334,7 @@ export default function Report2Screen() {
     }).sort((a: any, b: any) =>
       String(a.moza_code || '').localeCompare(String(b.moza_code || ''), undefined, { numeric: true })
     );
-  }, [mozas, filters.zoneNumber, filters.zoneType, (filters as any).circle, zoneNumberMap, zoneTypeMap, circleZoneMap]);
+  }, [mozas, activeCircleKeys, filters.zoneNumber, filters.zoneType, (filters as any).circle, zoneNumberMap, zoneTypeMap, circleZoneMap]);
 
   // Dropdown Options
   const circleOptions = useMemo(() => {
@@ -318,6 +354,14 @@ export default function Report2Screen() {
   // Filter Passbook Rows
   const filteredRows = useMemo(() => {
     return rows.filter((r: any) => {
+      if (!isActive(r)) return false;
+
+      // Check if Circle associated with row is active
+      const rCircleKey = String(r.circle_id || r.circle_code || '');
+      if (rCircleKey && !activeCircleKeys.has(rCircleKey)) {
+        return false;
+      }
+
       const rZoneNum = cleanZone(r.zone_number) || zoneNumberMap.get(String(r.zone_number_id || '')) || '';
       const rZoneType = String(r.zone_type || zoneTypeMap.get(String(r.zone_type_id || '')) || '').trim();
 
@@ -344,7 +388,7 @@ export default function Report2Screen() {
 
       return true;
     });
-  }, [rows, filters, zoneNumberMap, zoneTypeMap]);
+  }, [rows, activeCircleKeys, filters, zoneNumberMap, zoneTypeMap]);
 
   // Grouping & Sorting by Circle Code
   const circleGroups = useMemo(() => {

@@ -402,6 +402,18 @@ export default function Report1Screen() {
     return map;
   }, [circles, zoneNumberMap, zoneTypeMap]);
 
+  // Active Circles Lookup Set
+  const activeCircleKeys = useMemo(() => {
+    const set = new Set<string>();
+    circles.forEach((c: any) => {
+      if (c.status !== false) { // Default active if true or undefined
+        if (c.id) set.add(String(c.id));
+        if (c.circle_code) set.add(String(c.circle_code));
+      }
+    });
+    return set;
+  }, [circles]);
+
   const cleanZoneNumbersList = useMemo(() => {
     const set = new Set<string>();
     const list: { val: string; display: string }[] = [];
@@ -430,8 +442,11 @@ export default function Report1Screen() {
     return list;
   }, [zoneTypes]);
 
+  // Filtered Circles: Include ACTIVE circles only
   const filteredCircles = useMemo(() => {
     return circles.filter((c: any) => {
+      if (c.status === false) return false; // Show active circles only
+
       const cZoneNum = cleanZone(c.zone_number) || zoneNumberMap.get(String(c.zone_number_id || c.zone_id || '')) || '';
       const cZoneType = String(c.zone_type || zoneTypeMap.get(String(c.zone_type_id || '')) || '').trim();
 
@@ -447,9 +462,17 @@ export default function Report1Screen() {
     );
   }, [circles, filters.zoneNumber, filters.zoneType, zoneNumberMap, zoneTypeMap]);
 
+  // Filtered Mozas: Include Mozas of ACTIVE circles only
   const filteredMozas = useMemo(() => {
     return mozas.filter((m: any) => {
-      const parentCircleInfo = circleZoneMap.get(String(m.circle_id || m.circle_code || ''));
+      const parentCircleKey = String(m.circle_id || m.circle_code || '');
+      
+      // Filter out mozas belonging to inactive circles
+      if (parentCircleKey && activeCircleKeys.size > 0 && !activeCircleKeys.has(parentCircleKey)) {
+        return false;
+      }
+
+      const parentCircleInfo = circleZoneMap.get(parentCircleKey);
 
       const mZoneNum = cleanZone(m.zone_number) ||
                        zoneNumberMap.get(String(m.zone_number_id || m.zone_id || '')) ||
@@ -465,7 +488,7 @@ export default function Report1Screen() {
       }
       if ((filters as any).circle) {
         const targetCircle = String((filters as any).circle);
-        if (String(m.circle_id || m.circle_code || '') !== targetCircle) {
+        if (parentCircleKey !== targetCircle) {
           return false;
         }
       }
@@ -473,7 +496,7 @@ export default function Report1Screen() {
     }).sort((a: any, b: any) =>
       String(a.moza_code || '').localeCompare(String(b.moza_code || ''), undefined, { numeric: true })
     );
-  }, [mozas, filters.zoneNumber, filters.zoneType, (filters as any).circle, zoneNumberMap, zoneTypeMap, circleZoneMap]);
+  }, [mozas, filters.zoneNumber, filters.zoneType, (filters as any).circle, zoneNumberMap, zoneTypeMap, circleZoneMap, activeCircleKeys]);
 
   const circleOptions = useMemo(() => {
     return filteredCircles.map((c: any, idx: number) => ({
@@ -653,7 +676,7 @@ export default function Report1Screen() {
 
             <SearchableSelect
               label="Circle [Code - Name]"
-              placeholder={`All Circles (${circleOptions.length})`}
+              placeholder={`All Active Circles (${circleOptions.length})`}
               searchPlaceholder="Search Circle..."
               options={circleOptions}
               value={(filters as any).circle || ''}
@@ -663,7 +686,7 @@ export default function Report1Screen() {
 
             <SearchableSelect
               label="Moza [Code - Name]"
-              placeholder={`All Mozas (${mozaOptions.length})`}
+              placeholder={`All Active Mozas (${mozaOptions.length})`}
               searchPlaceholder="Search Moza..."
               options={mozaOptions}
               value={(filters as any).moza || ''}
@@ -808,7 +831,7 @@ function VarietyTable({
   // Auto-detect theme status from palette
   const isDark = Boolean(p?.isDark || p?.mode === 'dark' || (p?.surface && p.surface.toLowerCase().includes('1')));
 
-  // Dark Theme vs Light Theme Colors Matching Screenshots 1 & 2
+  // Dark Theme vs Light Theme Colors
   const totalBgColor = isDark ? '#061d16' : '#d2ebd9';
   const totalBorderColor = isDark ? '#133d30' : '#b8dfc5';
   const totalTextColor = isDark ? '#10c980' : '#065f46';
@@ -894,7 +917,7 @@ function VarietyTable({
           })
         : null}
 
-      {/* Total / Grand Total Row - Dynamic Light & Dark Theme */}
+      {/* Total / Grand Total Row */}
       <View style={[styles.row, styles.totalRow, { backgroundColor: totalBgColor, borderBottomColor: totalBorderColor }]}>
         <Text style={[styles.cell, { flex: 1.5, color: totalTextColor, fontWeight: '800', fontSize: 14 }]}>
           {totalLabel}
@@ -920,7 +943,7 @@ function VarietyTable({
         })}
       </View>
 
-      {/* Percentage Row - Dynamic Light & Dark Theme */}
+      {/* Percentage Row */}
       <View style={[styles.row, styles.totalRow, { backgroundColor: totalBgColor, borderBottomWidth: 0 }]}>
         <Text style={[styles.cell, { flex: 1.5, color: totalTextColor, fontWeight: '800', fontSize: 13 }]}>
           Percentage (%)
