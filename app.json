@@ -14,7 +14,10 @@
     "web": {
       "bundler": "metro",
       "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/favicon.png",
+      "pwa": {
+        "manifest": "./public/manifest.json"
+      }
     },
     "plugins": ["expo-router", "expo-font", "expo-web-browser"],
     "experiments": {

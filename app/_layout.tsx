@@ -1,6 +1,7 @@
 import '@/lib/suppressWarnings'; // 👈 Must remain the first import
 
 import React, { useState, useEffect } from 'react';
+import { Platform } from 'react-native';
 import { Stack } from 'expo-router';
 import Head from 'expo-router/head';
 import { StatusBar } from 'expo-status-bar';
@@ -17,6 +18,16 @@ export default function RootLayout() {
 
   useEffect(() => {
     setIsMounted(true);
+
+    // Register PWA Service Worker on Web platform
+    if (Platform.OS === 'web' && 'serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker
+          .register('/service-worker.js')
+          .then((reg) => console.log('PWA Service Worker registered successfully:', reg.scope))
+          .catch((err) => console.error('Service Worker registration failed:', err));
+      });
+    }
   }, []);
 
   if (!isMounted) {
@@ -27,7 +38,7 @@ export default function RootLayout() {
     <ThemeProvider>
       <AuthProvider>
         <>
-          {/* Google Search (SEO) Meta Tags */}
+          {/* SEO & PWA Head Tags */}
           <Head>
             <title>HSML Survey - Hamza Sugar Mills</title>
             <meta name="google-site-verification" content="p9wWzAtSev8X13OCAUM9h1rj9aUk0wQlnoYZa51li9Y" />
@@ -39,6 +50,14 @@ export default function RootLayout() {
               name="keywords" 
               content="hsmlsurvey, hsml survey, hamza sugar mills, growers data" 
             />
+
+            {/* PWA Manifest & App Installation Links */}
+            <link rel="manifest" href="/manifest.json" />
+            <meta name="theme-color" content="#000000" />
+            <meta name="mobile-web-app-capable" content="yes" />
+            <meta name="apple-mobile-web-app-capable" content="yes" />
+            <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+            <link rel="apple-touch-icon" href="/icon-192.png" />
           </Head>
 
           <GlobalScrollbarStyle />
