@@ -36,7 +36,7 @@ interface EntryRow {
   variety_sanma: number;
   non_variety_mondha: number;
   non_variety_sanma: number;
-  total_acre: number;
+  total_acre?: number;
 }
 
 interface MozaInfo {
@@ -133,7 +133,7 @@ export default function DashboardScreen() {
       // 3. Fetch entries for ALL matching grower IDs
       const { data: entries } = await supabase
         .from('passbook_entries')
-        .select('id, grower_id, moza_id, circle_id, zone_number_id, zone_type_id, survey, variety_mondha, variety_sanma, non_variety_mondha, non_variety_sanma, total_acre')
+        .select('id, grower_id, moza_id, circle_id, zone_number_id, zone_type_id, survey, variety_mondha, variety_sanma, non_variety_mondha, non_variety_sanma')
         .in('grower_id', allGrowerIds);
 
       // Selected moza_code along with id, moza_name, circle_id
@@ -319,23 +319,37 @@ function SummaryTable({ s, palette: p }: { s: MozaSummary; palette: any }) {
 }
 
 function VarietyTable({ labelHeader, rows, totals, palette: p, totalLabel = 'Total' }: { labelHeader: string; rows: { label: string; agg: VarietyAgg }[]; totals: VarietyAgg; palette: any; totalLabel?: string }) {
+  // Growers column ko exclude karne ke liye header aur cell indices filter kar rahe hain
+  const filteredHeaders = VARIETY_HEADERS.map((h, idx) => ({ header: h, idx }))
+    .filter(({ header }) => !header.toLowerCase().includes('grower'));
+
   return (
     <View style={{ borderWidth: 1, borderColor: p.border, borderRadius: 10, overflow: 'hidden' }}>
       <View style={[styles.row, { backgroundColor: p.surfaceAlt, borderBottomColor: p.border }]}>
         <Text style={[styles.cell, { flex: 1.4, color: p.textMuted, fontWeight: '700' }]}>{labelHeader}</Text>
-        {VARIETY_HEADERS.map((h) => (
-          <Text key={h} style={[styles.cell, { flex: 1, color: p.textMuted, fontWeight: '700', textAlign: 'center', fontSize: 9 }]}>{h}</Text>
+        {filteredHeaders.map(({ header, idx }) => (
+          <Text key={idx} style={[styles.cell, { flex: 1, color: p.textMuted, fontWeight: '700', textAlign: 'center', fontSize: 9 }]}>{header}</Text>
         ))}
       </View>
-      {rows.map((r, i) => (
-        <View key={i} style={[styles.row, { borderBottomColor: p.border, backgroundColor: i % 2 === 0 ? p.surface : p.surfaceAlt }]}>
-          <Text style={[styles.cell, { flex: 1.4, color: p.text, fontWeight: '600' }]}>{r.label}</Text>
-          {aggCells(r.agg).map((c, j) => <Text key={j} style={[styles.cell, { flex: 1, color: p.text, textAlign: 'center', fontSize: 11 }]}>{c}</Text>)}
-        </View>
-      ))}
+      {rows.map((r, i) => {
+        const cells = aggCells(r.agg);
+        return (
+          <View key={i} style={[styles.row, { borderBottomColor: p.border, backgroundColor: i % 2 === 0 ? p.surface : p.surfaceAlt }]}>
+            <Text style={[styles.cell, { flex: 1.4, color: p.text, fontWeight: '600' }]}>{r.label}</Text>
+            {filteredHeaders.map(({ idx }) => (
+              <Text key={idx} style={[styles.cell, { flex: 1, color: p.text, textAlign: 'center', fontSize: 11 }]}>{cells[idx]}</Text>
+            ))}
+          </View>
+        );
+      })}
       <View style={[styles.row, { backgroundColor: p.primarySoft, borderBottomWidth: 0 }]}>
         <Text style={[styles.cell, { flex: 1.4, color: p.primary, fontWeight: '800' }]}>{totalLabel}</Text>
-        {aggCells(totals).map((c, j) => <Text key={j} style={[styles.cell, { flex: 1, color: p.primary, fontWeight: '800', textAlign: 'center', fontSize: 11 }]}>{c}</Text>)}
+        {(() => {
+          const totalCells = aggCells(totals);
+          return filteredHeaders.map(({ idx }) => (
+            <Text key={idx} style={[styles.cell, { flex: 1, color: p.primary, fontWeight: '800', textAlign: 'center', fontSize: 11 }]}>{totalCells[idx]}</Text>
+          ));
+        })()}
       </View>
     </View>
   );

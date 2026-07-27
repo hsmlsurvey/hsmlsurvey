@@ -83,11 +83,12 @@ export function useReportData() {
       let hasMore = true;
 
       while (hasMore) {
+        // ✅ total_acre query se hata diya hai
         const { data, error: e } = await supabase
           .from('passbook_entries')
           .select(`
             id, grower_id, master_passbook, zone_number_id, zone_type_id, circle_id, moza_id, survey,
-            variety_mondha, variety_sanma, non_variety_mondha, non_variety_sanma, total_acre,
+            variety_mondha, variety_sanma, non_variety_mondha, non_variety_sanma,
             growers ( id, master_passbook, passbook_number, grower_name, father_name, cnic, cell, bank_title, bank_account, transport_type )
           `)
           .range(from, from + step - 1);
@@ -120,6 +121,9 @@ export function useReportData() {
         // Fallback to check master_passbook from passbook_entries, growers, or grower_id
         const mp = String(r.master_passbook || g?.master_passbook || r.grower_id || '').trim();
 
+        // ✅ Auto calculation: Tamam acres ka sum
+        const calculatedTotalAcre = vm + vs + nvm + nvs;
+
         return {
           entry_id: r.id,
           master_passbook: mp,
@@ -146,10 +150,10 @@ export function useReportData() {
           variety_sanma: vs,
           non_variety_mondha: nvm,
           non_variety_sanma: nvs,
-          total_acre: num(r.total_acre),
+          total_acre: calculatedTotalAcre, // 👈 Auto calculated value!
           total_mondha: vm + nvm,
           total_sanma: vs + nvs,
-          grand_total: vm + nvm + vs + nvs,
+          grand_total: calculatedTotalAcre,
         };
       });
       setRows(flat);
