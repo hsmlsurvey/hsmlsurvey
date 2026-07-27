@@ -39,12 +39,18 @@ interface EntryRow {
   total_acre: number;
 }
 
-interface MozaInfo { id: string; moza_name: string; circle_id: string; }
+interface MozaInfo {
+  id: string;
+  moza_name: string;
+  moza_code: string | null;
+  circle_id: string;
+}
 interface CircleInfo { id: string; circle_name: string; zone_number_id: string | null; zone_type_id: string | null; }
 interface ZoneNumberInfo { id: string; zone_number: string; }
 interface ZoneTypeInfo { id: string; zone_type: string; }
 
 interface MozaSummary {
+  mozaCode: string;
   mozaName: string;
   circleName: string;
   zoneNumber: string;
@@ -64,68 +70,84 @@ export default function DashboardScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [grower, setGrower] = useState<GrowerRow | null>(null);
+  const [masterPassbooksList, setMasterPassbooksList] = useState<string[]>([]);
   const [summaries, setSummaries] = useState<MozaSummary[]>([]);
   const [searched, setSearched] = useState(false);
 
   const runSearch = useCallback(async (q: string) => {
     setError('');
     setGrower(null);
+    setMasterPassbooksList([]);
     setSummaries([]);
     setSearched(true);
     const term = q.trim();
     if (!term) { setError('Enter a Passbook #, Master Passbook # or C.N.I.C to search.'); return; }
     setLoading(true);
-    try {
-      let growerData: GrowerRow | null = null;
-      let allGrowerIds: string[] = [];
 
-      // Search by Passbook Number or Master Passbook Number
-      const { data: byPassbook } = await supabase
+    try {
+      // 1. Initial search by Passbook Number, Master Passbook Number, or CNIC
+      const { data: initialGrowers } = await supabase
         .from('growers')
         .select('id, passbook_number, master_passbook, grower_name, father_name, cnic, cell, bank_title, bank_account, transport_type')
-        .or(`passbook_number.ilike.${term},master_passbook.ilike.${term}`);
+        .or(`passbook_number.ilike.${term},master_passbook.ilike.${term},cnic.ilike.${term}`);
 
-      if (byPassbook && byPassbook.length > 0) {
-        growerData = byPassbook[0] as GrowerRow;
-        allGrowerIds = byPassbook.map((g) => g.id);
-      }
-
-      // Search by CNIC if not found
-      if (!growerData) {
-        const { data: byCnic } = await supabase
-          .from('growers')
-          .select('id, passbook_number, master_passbook, grower_name, father_name, cnic, cell, bank_title, bank_account, transport_type')
-          .ilike('cnic', term)
-          .order('created_at', { ascending: true });
-        if (byCnic && byCnic.length > 0) {
-          growerData = byCnic[0] as GrowerRow;
-          allGrowerIds = byCnic.map((g) => g.id);
-        }
-      }
-
-      if (!growerData) {
+      if (!initialGrowers || initialGrowers.length === 0) {
         setError('No grower found for this Passbook #, Master Passbook # or C.N.I.C.');
         setLoading(false);
         return;
       }
-      setGrower(growerData);
 
+      let allGrowers: GrowerRow[] = initialGrowers as GrowerRow[];
+
+      // Extract CNICs from initial results
+      const cnics = Array.from(new Set(initialGrowers.map((g) => g.cnic).filter(Boolean))) as string[];
+
+      // 2. If CNIC exists, fetch ALL growers / passbooks registered under that CNIC
+      if (cnics.length > 0) {
+        const { data: cnicGrowers } = await supabase
+          .from('growers')
+          .select('id, passbook_number, master_passbook, grower_name, father_name, cnic, cell, bank_title, bank_account, transport_type')
+          .in('cnic', cnics);
+
+        if (cnicGrowers && cnicGrowers.length > 0) {
+          const growerMap = new Map<string, GrowerRow>();
+          allGrowers.forEach((g) => growerMap.set(g.id, g));
+          cnicGrowers.forEach((g) => growerMap.set(g.id, g as GrowerRow));
+          allGrowers = Array.from(growerMap.values());
+        }
+      }
+
+      // Primary grower for profile header details
+      setGrower(allGrowers[0]);
+
+      // Collect all unique Master Passbook & Passbook numbers
+      const mpSet = new Set<string>();
+      allGrowers.forEach((g) => {
+        if (g.master_passbook) mpSet.add(g.master_passbook);
+        else if (g.passbook_number) mpSet.add(g.passbook_number);
+      });
+      setMasterPassbooksList(Array.from(mpSet));
+
+      const allGrowerIds = allGrowers.map((g) => g.id);
+
+      // 3. Fetch entries for ALL matching grower IDs
       const { data: entries } = await supabase
         .from('passbook_entries')
         .select('id, grower_id, moza_id, circle_id, zone_number_id, zone_type_id, survey, variety_mondha, variety_sanma, non_variety_mondha, non_variety_sanma, total_acre')
         .in('grower_id', allGrowerIds);
 
-      const { data: mozas } = await supabase.from('mozas').select('id, moza_name, circle_id');
+      // Selected moza_code along with id, moza_name, circle_id
+      const { data: mozas } = await supabase.from('mozas').select('id, moza_name, moza_code, circle_id');
       const { data: circles } = await supabase.from('circles').select('id, circle_name, zone_number_id, zone_type_id');
       const { data: zoneNumbers } = await supabase.from('zone_numbers').select('id, zone_number');
       const { data: zoneTypes } = await supabase.from('zone_types').select('id, zone_type');
 
-      // Get passbook numbers per grower for each moza
-      const { data: growersData } = await supabase
-        .from('growers')
-        .select('id, passbook_number')
-        .in('id', allGrowerIds);
-      const growerPbMap = new Map((growersData || []).map((g: any) => [g.id, g.passbook_number]));
+      // Map passbook info for each grower ID
+      const growerPbMap = new Map<string, string>();
+      allGrowers.forEach((g) => {
+        const displayPb = g.master_passbook ? `${g.passbook_number} (MP: ${g.master_passbook})` : g.passbook_number;
+        growerPbMap.set(g.id, displayPb);
+      });
 
       setSummaries(buildSummaries(
         entries || [],
@@ -157,7 +179,7 @@ export default function DashboardScreen() {
     <AppShell title="Dashboard">
       <View style={{ flex: 1 }}>
         <Card style={{ marginBottom: 16 }}>
-          <SectionTitle title="Grower Search" subtitle="Search by Passbook #, Master Passbook # or C.N.I.C — system auto-detects and finds all matching records." />
+          <SectionTitle title="Grower Search" subtitle="Search by Passbook #, Master Passbook # or C.N.I.C — system auto-detects all linked passbooks by CNIC." />
           <View style={styles.searchRow}>
             <View style={{ flex: 1 }}>
               <Input
@@ -184,11 +206,10 @@ export default function DashboardScreen() {
             {/* Grower header (shown once) */}
             <Card style={{ marginBottom: 16 }}>
               <View style={styles.growerHeader}>
-                <View>
+                <View style={{ flex: 1, paddingRight: 8 }}>
                   <Text style={[styles.growerName, { color: p.text }]}>{grower.grower_name}</Text>
-                  {/* Updated to display Master Passbook Number */}
                   <Text style={[styles.growerSub, { color: p.textMuted }]}>
-                    Master Passbook #: {grower.master_passbook || grower.passbook_number || '-'}
+                    Master Passbook(s) #: {masterPassbooksList.length > 0 ? masterPassbooksList.join(', ') : '-'}
                   </Text>
                 </View>
                 <Badge label={`${summaries.length} Moza(s)`} tone="primary" />
@@ -203,13 +224,16 @@ export default function DashboardScreen() {
               </View>
             </Card>
 
-            {/* All-Moza Summary Table */}
+            {/* All-Moza Summary Table (Sorted by Moza Code) */}
             {summaries.length > 0 ? (
               <Card style={{ marginBottom: 16 }}>
-                <SectionTitle title="All Moza Summary" subtitle="Totals across all mozas for this grower (variety / non-variety mondha & sanma)" />
+                <SectionTitle title="All Moza Summary" subtitle="Totals across all mozas for this grower (sorted by Moza Code)" />
                 <VarietyTable
                   labelHeader="Moza"
-                  rows={summaries.map((s) => ({ label: s.mozaName, agg: s.agg }))}
+                  rows={summaries.map((s) => ({
+                    label: s.mozaCode ? `${s.mozaCode} - ${s.mozaName}` : s.mozaName,
+                    agg: s.agg
+                  }))}
                   totals={grandAgg}
                   palette={p}
                   totalLabel="Grand Total"
@@ -217,12 +241,14 @@ export default function DashboardScreen() {
               </Card>
             ) : null}
 
-            {/* Moza-wise detail tables */}
+            {/* Moza-wise detail tables (Sorted by Moza Code) */}
             {summaries.map((s, i) => (
               <Card key={i} style={{ marginBottom: 16 }}>
                 <View style={[styles.mozaHeader, { borderBottomColor: p.border }]}>
                   <View>
-                    <Text style={[styles.mozaTitle, { color: p.text }]}>{s.mozaName}</Text>
+                    <Text style={[styles.mozaTitle, { color: p.text }]}>
+                      {s.mozaCode ? `${s.mozaCode} - ${s.mozaName}` : s.mozaName}
+                    </Text>
                     <Text style={[styles.mozaSub, { color: p.textMuted }]}>
                       {s.zoneNumber} ({s.zoneType}) · {s.circleName}
                     </Text>
@@ -353,6 +379,7 @@ function buildSummaries(
       if (pb) pbSet.add(pb);
     });
     result.push({
+      mozaCode: moza?.moza_code || '',
       mozaName: moza?.moza_name || 'Unknown Moza',
       circleName: circle?.circle_name || '-',
       zoneNumber: zn?.zone_number || '-',
@@ -362,14 +389,21 @@ function buildSummaries(
       agg,
     });
   });
-  return result.sort((a, b) => a.mozaName.localeCompare(b.mozaName));
+
+  // Numeric & Alphabetical Sorting by Moza Code
+  return result.sort((a, b) => {
+    return (a.mozaCode || '').localeCompare(b.mozaCode || '', undefined, {
+      numeric: true,
+      sensitivity: 'base',
+    });
+  });
 }
 
 const styles = StyleSheet.create({
   searchRow: { flexDirection: 'row', gap: 10, alignItems: 'center' },
   growerHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 },
   growerName: { fontSize: 18, fontWeight: '800' },
-  growerSub: { fontSize: 13, marginTop: 2 },
+  growerSub: { fontSize: 13, marginTop: 2, fontWeight: '600' },
   infoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   infoCell: { flex: 1, minWidth: 140 },
   infoLabel: { fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.3 },

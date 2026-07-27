@@ -52,7 +52,7 @@ export function AppShell({ children, title }: { children: React.ReactNode; title
   const { mode, toggle } = useTheme();
   const { profile, signOut, can } = useAuth();
   const pathname = usePathname();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(false); // Controls sidebar visibility
   const [pwOpen, setPwOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false); // Drop-up menu state
 
@@ -79,7 +79,7 @@ export function AppShell({ children, title }: { children: React.ReactNode; title
   };
 
   const handleNav = (href: string) => {
-    setOpen(false);
+    setOpen(false); // Close menu on selection
     router.push(href as any);
   };
 
@@ -104,6 +104,9 @@ export function AppShell({ children, title }: { children: React.ReactNode; title
           <Text style={[styles.brandTitle, { color: p.sidebarText }]}>Hamza Sugar</Text>
           <Text style={[styles.brandSub, { color: p.sidebarMuted }]}>Mills limited</Text>
         </View>
+        <TouchableOpacity onPress={() => setOpen(false)} style={styles.closeBtn}>
+          <X size={20} color={p.sidebarText} />
+        </TouchableOpacity>
       </View>
 
       <ScrollView
@@ -187,32 +190,32 @@ export function AppShell({ children, title }: { children: React.ReactNode; title
 
   return (
     <View style={[styles.shell, { backgroundColor: p.bg }]}>
-      {Platform.OS === 'web' ? (
-        <View style={[styles.sidebar, { backgroundColor: p.sidebar, borderRightColor: p.sidebarBorder }]}>
-          {SidebarContent}
-        </View>
-      ) : null}
-
-      {Platform.OS !== 'web' && open ? (
+      {/* Sidebar Overlay (Mobile & PC Both) */}
+      {open ? (
         <View style={styles.drawerOverlay}>
           <View style={[styles.drawer, { backgroundColor: p.sidebar }]}>{SidebarContent}</View>
-          <TouchableOpacity style={styles.drawerBackdrop} onPress={() => setOpen(false)} />
+          <TouchableOpacity
+            style={styles.drawerBackdrop}
+            onPress={() => setOpen(false)}
+            activeOpacity={1}
+          />
         </View>
       ) : null}
 
       <View style={styles.main}>
         <View style={[styles.topbar, { backgroundColor: p.surface, borderBottomColor: p.border }]}>
-          {Platform.OS === 'web' ? null : (
-            <TouchableOpacity onPress={() => setOpen(true)} style={styles.menuBtn}>
-              <Menu size={22} color={p.text} />
-            </TouchableOpacity>
-          )}
+          {/* Hamburger Menu Button - Always Visible on Web & Mobile */}
+          <TouchableOpacity onPress={() => setOpen(!open)} style={styles.menuBtn} activeOpacity={0.7}>
+            <Menu size={22} color={p.text} />
+          </TouchableOpacity>
+
           <Text style={[styles.topbarTitle, { color: p.text }]}>{title}</Text>
           <View style={{ flex: 1 }} />
           <TouchableOpacity onPress={toggle} style={styles.iconBtn}>
             {mode === 'light' ? <Moon size={18} color={p.text} /> : <Sun size={18} color={p.text} />}
           </TouchableOpacity>
         </View>
+
         <View style={styles.content}>{children}</View>
       </View>
 
@@ -291,8 +294,16 @@ function ChangePasswordModal({ visible, onClose }: { visible: boolean; onClose: 
 const styles = StyleSheet.create({
   shell: { flex: 1, flexDirection: 'row' },
   sidebar: { width: 270, borderRightWidth: 1 },
-  drawerOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 50, flexDirection: 'row' },
-  drawer: { width: 270, height: '100%' },
+  drawerOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 1000,
+    flexDirection: 'row',
+  },
+  drawer: { width: 270, height: '100%', zIndex: 1001 },
   drawerBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' },
   brandArea: { flexDirection: 'row', alignItems: 'center', padding: 16, borderBottomWidth: 1, gap: 10 },
   logo: { width: 40, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
@@ -338,7 +349,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     gap: 12,
   },
-  menuBtn: { padding: 4 },
+  menuBtn: { padding: 4, cursor: 'pointer' as any },
   topbarTitle: { fontSize: 18, fontWeight: '700' },
   iconBtn: { padding: 6, borderRadius: 8 },
   content: { flex: 1, padding: 16 },
