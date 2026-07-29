@@ -63,15 +63,16 @@ export default function MozasScreen() {
       rowLabel={(r) => r.moza_name}
       filter={selectedCircle ? { circle_id: selectedCircle } : undefined}
       headerExtra={
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <View style={{ width: 180 }}>
+        /* Responsive Filter Container */
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, flex: 1 }}>
+          <View style={{ flex: 1, minWidth: 130 }}>
             <Input
               placeholder="Search Circle..."
               value={circleSearchText}
               onChangeText={(t) => setCircleSearchText(t)}
             />
           </View>
-          <View style={{ width: 160 }}>
+          <View style={{ flex: 1, minWidth: 130 }}>
             <NativeSelect
               value={selectedCircle}
               placeholder="All Circles"
@@ -96,13 +97,13 @@ export default function MozasScreen() {
         {
           key: 's_no',
           label: 'S.#',
-          width: 60,
+          width: 50,
           render: (_, i) => <Text style={{ fontWeight: '600', color: p.text }}>{i + 1}</Text>,
         },
         {
           key: 'moza_code',
           label: 'Moza Code',
-          width: 120,
+          width: 100,
           render: (r) => (
             <Text style={{ fontWeight: '700', color: p.primary, fontSize: 13 }}>
               {r.moza_code || mozaCodeMap[r.id] || '-'}
@@ -112,13 +113,13 @@ export default function MozasScreen() {
         {
           key: 'moza_name',
           label: 'Moza',
-          width: 220,
+          width: 180,
           render: (r) => <Text style={{ fontWeight: '700', color: p.text }}>{r.moza_name}</Text>,
         },
         {
           key: 'circle_id',
           label: 'Circle',
-          width: 220,
+          width: 180,
           render: (r) => (
             <NativeSelect
               value={r.circle_id || ''}

@@ -35,7 +35,7 @@ export default function CirclesScreen() {
   // Filter States
   const [selectedZoneNumber, setSelectedZoneNumber] = useState<string>('');
   const [selectedZoneType, setSelectedZoneType] = useState<string>('');
-  const [selectedStatus, setSelectedStatus] = useState<string>('active'); // 'all' | 'active' | 'inactive'
+  const [selectedStatus, setSelectedStatus] = useState<string>('active');
 
   // Sorting state
   const [sort, setSort] = useState<{ key: SortKey; dir: 'asc' | 'desc' } | null>(null);
@@ -53,7 +53,6 @@ export default function CirclesScreen() {
 
       if (cRes.error) throw cRes.error;
 
-      // Map circle_id to first 3 characters of passbook_number
       const codeMap: Record<string, string> = {};
       (pbRes.data || []).forEach((e: any) => {
         const pbNum = e.growers?.passbook_number || e.passbook_number;
@@ -66,7 +65,7 @@ export default function CirclesScreen() {
       const enrichedRows: ExtendedCircle[] = (cRes.data || []).map((c: any) => ({
         ...c,
         circle_code: c.circle_code || codeMap[c.id] || '-',
-        status: c.status ?? true, // Default to true if undefined
+        status: c.status ?? true,
       }));
 
       setRows(enrichedRows);
@@ -81,7 +80,6 @@ export default function CirclesScreen() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Sorting Handler
   const toggleSort = (key: SortKey) => {
     setSort((prev) => {
       if (!prev || prev.key !== key) return { key, dir: 'asc' };
@@ -90,7 +88,6 @@ export default function CirclesScreen() {
     });
   };
 
-  // Filtered Rows (Zone #, Zone Type, and Status Filter Logic)
   const filteredRows = useMemo(() => {
     return rows.filter((r) => {
       const matchesZn = !selectedZoneNumber || r.zone_number_id === selectedZoneNumber;
@@ -104,7 +101,6 @@ export default function CirclesScreen() {
     });
   }, [rows, selectedZoneNumber, selectedZoneType, selectedStatus]);
 
-  // Memoized Sorted Rows
   const sortedRows = useMemo(() => {
     if (!sort) return filteredRows;
     return [...filteredRows].sort((a, b) => {
@@ -209,7 +205,6 @@ export default function CirclesScreen() {
   const filterZnOpts = [{ value: '', label: 'All Zone #' }, ...znOpts];
   const filterZtOpts = [{ value: '', label: 'All Zone Types' }, ...ztOpts];
 
-  // Top Filter Options
   const filterStatusOpts = [
     { value: 'all', label: 'All Status' },
     { value: 'active', label: 'Active' },
@@ -228,16 +223,15 @@ export default function CirclesScreen() {
   return (
     <AppShell title="Circles">
       <View style={{ flex: 1 }}>
-        {/* Top Header & Search / Filter Controls */}
-        <View style={styles.topActions}>
-          <View>
+        {/* Responsive Header Actions */}
+        <View style={styles.topContainer}>
+          <View style={styles.titleSection}>
             <Text style={[styles.pageTitle, { color: p.text }]}>Circles</Text>
             <Text style={[styles.pageSub, { color: p.textMuted }]}>{sortedRows.length} record(s)</Text>
           </View>
 
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-            {/* Status Filter (All / Active / Inactive) */}
-            <View style={{ width: 140 }}>
+          <View style={styles.filterBar}>
+            <View style={styles.filterItem}>
               <NativeSelect
                 value={selectedStatus}
                 placeholder="Status"
@@ -246,8 +240,7 @@ export default function CirclesScreen() {
               />
             </View>
 
-            {/* Zone # Search / Filter */}
-            <View style={{ width: 150 }}>
+            <View style={styles.filterItem}>
               <NativeSelect
                 value={selectedZoneNumber}
                 placeholder="All Zone #"
@@ -256,8 +249,7 @@ export default function CirclesScreen() {
               />
             </View>
 
-            {/* Zone Type Search / Filter */}
-            <View style={{ width: 160 }}>
+            <View style={styles.filterItem}>
               <NativeSelect
                 value={selectedZoneType}
                 placeholder="All Zone Types"
@@ -267,170 +259,167 @@ export default function CirclesScreen() {
             </View>
 
             {can('circles', 'insert') ? (
-              <Button title="Add New" onPress={openAdd} icon={<Plus size={16} color={p.primaryText} />} />
+              <View style={styles.addButtonContainer}>
+                <Button title="Add New" onPress={openAdd} icon={<Plus size={16} color={p.primaryText} />} />
+              </View>
             ) : null}
           </View>
         </View>
 
         {error ? <View style={{ marginBottom: 12 }}><ErrorText message={error} /></View> : null}
 
+        {/* Responsive Scrollable Table Container */}
         <Card style={{ flex: 1, padding: 0, overflow: 'hidden' }}>
-          {loading ? <EmptyState message="Loading..." /> : (
-            <ScrollView horizontal={false} style={{ flex: 1 }}>
-              {/* Table Header */}
-              <View style={[styles.headerRow, { backgroundColor: p.surfaceAlt, borderBottomColor: p.border }]}>
-                <Text style={[styles.headCell, { color: p.textMuted, width: 50 }]}>S.#</Text>
+          {loading ? (
+            <EmptyState message="Loading..." />
+          ) : (
+            <ScrollView horizontal showsHorizontalScrollIndicator={true} style={{ flex: 1 }}>
+              <View style={{ minWidth: 840, flex: 1 }}>
+                <ScrollView style={{ flex: 1 }}>
+                  {/* Table Header */}
+                  <View style={[styles.headerRow, { backgroundColor: p.surfaceAlt, borderBottomColor: p.border }]}>
+                    <Text style={[styles.headCell, { color: p.textMuted, width: 50 }]}>S.#</Text>
 
-                {/* Circle Code Header */}
-                <TouchableOpacity
-                  onPress={() => toggleSort('circle_code')}
-                  style={[styles.sortHeadCell, { width: 100 }]}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.headCell, { color: sort?.key === 'circle_code' ? p.primary : p.textMuted }]}>
-                    Circle Code
-                  </Text>
-                  {renderSortIcon('circle_code')}
-                </TouchableOpacity>
-
-                {/* Circle Name Header */}
-                <TouchableOpacity
-                  onPress={() => toggleSort('circle_name')}
-                  style={[styles.sortHeadCell, { width: 180 }]}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.headCell, { color: sort?.key === 'circle_name' ? p.primary : p.textMuted }]}>Circle</Text>
-                  {renderSortIcon('circle_name')}
-                </TouchableOpacity>
-
-                {/* Zone # Header */}
-                <TouchableOpacity
-                  onPress={() => toggleSort('zone_number')}
-                  style={[styles.sortHeadCell, { width: 150 }]}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.headCell, { color: sort?.key === 'zone_number' ? p.primary : p.textMuted }]}>Zone #</Text>
-                  {renderSortIcon('zone_number')}
-                </TouchableOpacity>
-
-                {/* Zone Type Header */}
-                <TouchableOpacity
-                  onPress={() => toggleSort('zone_type')}
-                  style={[styles.sortHeadCell, { width: 150 }]}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.headCell, { color: sort?.key === 'zone_type' ? p.primary : p.textMuted }]}>Zone Type</Text>
-                  {renderSortIcon('zone_type')}
-                </TouchableOpacity>
-
-                {/* Status Header */}
-                <TouchableOpacity
-                  onPress={() => toggleSort('status')}
-                  style={[styles.sortHeadCell, { width: 130 }]}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.headCell, { color: sort?.key === 'status' ? p.primary : p.textMuted }]}>Status</Text>
-                  {renderSortIcon('status')}
-                </TouchableOpacity>
-
-                <Text style={[styles.headCell, { color: p.textMuted, width: 80, textAlign: 'right' }]}>Actions</Text>
-              </View>
-
-              {/* Rows */}
-              {sortedRows.length === 0 ? (
-                <EmptyState message="No circles found." />
-              ) : (
-                sortedRows.map((row, idx) => (
-                  <View 
-                    key={row.id} 
-                    style={[
-                      styles.dataRow, 
-                      { 
-                        borderBottomColor: p.border, 
-                        backgroundColor: idx % 2 === 0 ? p.surface : p.surfaceAlt,
-                        zIndex: sortedRows.length - idx 
-                      }
-                    ]}
-                  >
-                    {/* Serial Number */}
-                    <View style={{ width: 50, paddingHorizontal: 8, justifyContent: 'center' }}>
-                      <Text style={{ fontWeight: '600', color: p.text, fontSize: 13 }}>{idx + 1}</Text>
-                    </View>
-
-                    {/* Circle Code */}
-                    <View style={{ width: 100, paddingHorizontal: 8, justifyContent: 'center' }}>
-                      <Text style={{ fontWeight: '700', color: p.primary, fontSize: 13 }}>
-                        {row.circle_code || '-'}
+                    <TouchableOpacity
+                      onPress={() => toggleSort('circle_code')}
+                      style={[styles.sortHeadCell, { width: 100 }]}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.headCell, { color: sort?.key === 'circle_code' ? p.primary : p.textMuted }]}>
+                        Circle Code
                       </Text>
-                    </View>
+                      {renderSortIcon('circle_code')}
+                    </TouchableOpacity>
 
-                    {/* Circle Name */}
-                    <View style={{ width: 180, paddingHorizontal: 8, justifyContent: 'center' }}>
-                      <Text style={{ fontWeight: '700', color: p.text, fontSize: 13 }}>{row.circle_name}</Text>
-                    </View>
+                    <TouchableOpacity
+                      onPress={() => toggleSort('circle_name')}
+                      style={[styles.sortHeadCell, { width: 180 }]}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.headCell, { color: sort?.key === 'circle_name' ? p.primary : p.textMuted }]}>Circle</Text>
+                      {renderSortIcon('circle_name')}
+                    </TouchableOpacity>
 
-                    {/* Inline Zone # Selection */}
-                    <View style={{ width: 150, paddingHorizontal: 4, paddingVertical: 4, zIndex: 3 }}>
-                      {can('circles', 'update') ? (
-                        <NativeSelect
-                          value={row.zone_number_id || ''}
-                          placeholder="Zone #"
-                          options={znOpts}
-                          onChange={(v) => updateInline(row, 'zone_number_id', v)}
-                        />
-                      ) : (
-                        <Text style={{ color: p.text, fontSize: 13 }}>{row.zone_numbers?.zone_number || '-'}</Text>
-                      )}
-                    </View>
+                    <TouchableOpacity
+                      onPress={() => toggleSort('zone_number')}
+                      style={[styles.sortHeadCell, { width: 150 }]}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.headCell, { color: sort?.key === 'zone_number' ? p.primary : p.textMuted }]}>Zone #</Text>
+                      {renderSortIcon('zone_number')}
+                    </TouchableOpacity>
 
-                    {/* Inline Zone Type Selection */}
-                    <View style={{ width: 150, paddingHorizontal: 4, paddingVertical: 4, zIndex: 2 }}>
-                      {can('circles', 'update') ? (
-                        <NativeSelect
-                          value={row.zone_type_id || ''}
-                          placeholder="Zone Type"
-                          options={ztOpts}
-                          onChange={(v) => updateInline(row, 'zone_type_id', v)}
-                        />
-                      ) : (
-                        <Text style={{ color: p.text, fontSize: 13 }}>{row.zone_types?.zone_type || '-'}</Text>
-                      )}
-                    </View>
+                    <TouchableOpacity
+                      onPress={() => toggleSort('zone_type')}
+                      style={[styles.sortHeadCell, { width: 150 }]}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.headCell, { color: sort?.key === 'zone_type' ? p.primary : p.textMuted }]}>Zone Type</Text>
+                      {renderSortIcon('zone_type')}
+                    </TouchableOpacity>
 
-                    {/* TABLE ROW: INLINE STATUS TOGGLE BUTTON */}
-                    <View style={{ width: 130, paddingHorizontal: 8, paddingVertical: 4, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                      {can('circles', 'update') ? (
-                        <>
-                          <Switch
-                            value={row.status ?? true}
-                            onValueChange={(val) => updateInline(row, 'status', val)}
-                            trackColor={{ false: p.border, true: p.primarySoft }}
-                            thumbColor={Platform.OS === 'ios' ? undefined : ((row.status ?? true) ? p.primary : p.textMuted)}
-                            ios_backgroundColor={p.border}
-                          />
-                          <Text style={{ color: row.status ? p.primary : p.error, fontWeight: '600', fontSize: 12 }}>
-                            {row.status ? 'Active' : 'Inactive'}
-                          </Text>
-                        </>
-                      ) : (
-                        <Text style={{ color: row.status ? p.primary : p.error, fontWeight: '600', fontSize: 13 }}>
-                          {row.status ? 'Active' : 'Inactive'}
-                        </Text>
-                      )}
-                    </View>
+                    <TouchableOpacity
+                      onPress={() => toggleSort('status')}
+                      style={[styles.sortHeadCell, { width: 130 }]}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.headCell, { color: sort?.key === 'status' ? p.primary : p.textMuted }]}>Status</Text>
+                      {renderSortIcon('status')}
+                    </TouchableOpacity>
 
-                    {/* Actions */}
-                    <View style={{ width: 80, flexDirection: 'row', gap: 6, justifyContent: 'flex-end', paddingHorizontal: 4, alignItems: 'center' }}>
-                      {can('circles', 'update') ? (
-                        <TouchableOpacity onPress={() => openEdit(row)} style={[styles.iconBtn, { borderColor: p.border }]}><Pencil size={14} color={p.primary} /></TouchableOpacity>
-                      ) : null}
-                      {can('circles', 'delete') ? (
-                        <TouchableOpacity onPress={() => onDelete(row)} style={[styles.iconBtn, { borderColor: p.border }]}><Trash2 size={14} color={p.error} /></TouchableOpacity>
-                      ) : null}
-                    </View>
+                    <Text style={[styles.headCell, { color: p.textMuted, width: 80, textAlign: 'right' }]}>Actions</Text>
                   </View>
-                ))
-              )}
+
+                  {/* Table Rows */}
+                  {sortedRows.length === 0 ? (
+                    <EmptyState message="No circles found." />
+                  ) : (
+                    sortedRows.map((row, idx) => (
+                      <View 
+                        key={row.id} 
+                        style={[
+                          styles.dataRow, 
+                          { 
+                            borderBottomColor: p.border, 
+                            backgroundColor: idx % 2 === 0 ? p.surface : p.surfaceAlt,
+                            zIndex: sortedRows.length - idx 
+                          }
+                        ]}
+                      >
+                        <View style={{ width: 50, paddingHorizontal: 8, justifyContent: 'center' }}>
+                          <Text style={{ fontWeight: '600', color: p.text, fontSize: 13 }}>{idx + 1}</Text>
+                        </View>
+
+                        <View style={{ width: 100, paddingHorizontal: 8, justifyContent: 'center' }}>
+                          <Text style={{ fontWeight: '700', color: p.primary, fontSize: 13 }}>
+                            {row.circle_code || '-'}
+                          </Text>
+                        </View>
+
+                        <View style={{ width: 180, paddingHorizontal: 8, justifyContent: 'center' }}>
+                          <Text style={{ fontWeight: '700', color: p.text, fontSize: 13 }}>{row.circle_name}</Text>
+                        </View>
+
+                        <View style={{ width: 150, paddingHorizontal: 4, paddingVertical: 4, zIndex: 3 }}>
+                          {can('circles', 'update') ? (
+                            <NativeSelect
+                              value={row.zone_number_id || ''}
+                              placeholder="Zone #"
+                              options={znOpts}
+                              onChange={(v) => updateInline(row, 'zone_number_id', v)}
+                            />
+                          ) : (
+                            <Text style={{ color: p.text, fontSize: 13 }}>{row.zone_numbers?.zone_number || '-'}</Text>
+                          )}
+                        </View>
+
+                        <View style={{ width: 150, paddingHorizontal: 4, paddingVertical: 4, zIndex: 2 }}>
+                          {can('circles', 'update') ? (
+                            <NativeSelect
+                              value={row.zone_type_id || ''}
+                              placeholder="Zone Type"
+                              options={ztOpts}
+                              onChange={(v) => updateInline(row, 'zone_type_id', v)}
+                            />
+                          ) : (
+                            <Text style={{ color: p.text, fontSize: 13 }}>{row.zone_types?.zone_type || '-'}</Text>
+                          )}
+                        </View>
+
+                        <View style={{ width: 130, paddingHorizontal: 8, paddingVertical: 4, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                          {can('circles', 'update') ? (
+                            <>
+                              <Switch
+                                value={row.status ?? true}
+                                onValueChange={(val) => updateInline(row, 'status', val)}
+                                trackColor={{ false: p.border, true: p.primarySoft }}
+                                thumbColor={Platform.OS === 'ios' ? undefined : ((row.status ?? true) ? p.primary : p.textMuted)}
+                                ios_backgroundColor={p.border}
+                              />
+                              <Text style={{ color: row.status ? p.primary : p.error, fontWeight: '600', fontSize: 12 }}>
+                                {row.status ? 'Active' : 'Inactive'}
+                              </Text>
+                            </>
+                          ) : (
+                            <Text style={{ color: row.status ? p.primary : p.error, fontWeight: '600', fontSize: 13 }}>
+                              {row.status ? 'Active' : 'Inactive'}
+                            </Text>
+                          )}
+                        </View>
+
+                        <View style={{ width: 80, flexDirection: 'row', gap: 6, justifyContent: 'flex-end', paddingHorizontal: 4, alignItems: 'center' }}>
+                          {can('circles', 'update') ? (
+                            <TouchableOpacity onPress={() => openEdit(row)} style={[styles.iconBtn, { borderColor: p.border }]}><Pencil size={14} color={p.primary} /></TouchableOpacity>
+                          ) : null}
+                          {can('circles', 'delete') ? (
+                            <TouchableOpacity onPress={() => onDelete(row)} style={[styles.iconBtn, { borderColor: p.border }]}><Trash2 size={14} color={p.error} /></TouchableOpacity>
+                          ) : null}
+                        </View>
+                      </View>
+                    ))
+                  )}
+                </ScrollView>
+              </View>
             </ScrollView>
           )}
         </Card>
@@ -450,9 +439,8 @@ export default function CirclesScreen() {
               <NativeSelect value={zoneNumberId} placeholder="Select Zone #" options={znOpts} onChange={setZoneNumberId} />
               <NativeSelect value={zoneTypeId} placeholder="Select Zone Type" options={ztOpts} onChange={setZoneTypeId} />
               
-              {/* MODAL FORM: STATUS TOGGLE BUTTON */}
               <View style={[styles.toggleContainer, { borderColor: p.border, backgroundColor: p.surfaceAlt }]}>
-                <View>
+                <View style={{ flex: 1, paddingRight: 8 }}>
                   <Text style={[styles.toggleLabel, { color: p.text }]}>Circle Status</Text>
                   <Text style={{ fontSize: 12, color: isActive ? p.primary : p.error, fontWeight: '600' }}>
                     {isActive ? 'Active (Will show in reports)' : 'Inactive (Will be hidden)'}
@@ -482,16 +470,20 @@ export default function CirclesScreen() {
 }
 
 const styles = StyleSheet.create({
-  topActions: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, gap: 12, flexWrap: 'wrap' },
+  topContainer: { marginBottom: 16, gap: 12 },
+  titleSection: { marginBottom: 4 },
   pageTitle: { fontSize: 20, fontWeight: '800' },
   pageSub: { fontSize: 13, marginTop: 2 },
+  filterBar: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, alignItems: 'center' },
+  filterItem: { flex: 1, minWidth: 130 },
+  addButtonContainer: { minWidth: 110 },
   headerRow: { flexDirection: 'row', borderBottomWidth: 1, paddingVertical: 10, paddingHorizontal: 4, alignItems: 'center' },
   headCell: { fontSize: 10, fontWeight: '700', textTransform: 'uppercase' },
   sortHeadCell: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   dataRow: { flexDirection: 'row', borderBottomWidth: 1, alignItems: 'center', paddingVertical: 4, position: 'relative' },
   iconBtn: { width: 30, height: 30, borderRadius: 8, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center', padding: 20 },
-  modalCard: { width: '100%', maxWidth: 520, borderRadius: 14, borderWidth: 1, padding: 20 },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center', padding: 16 },
+  modalCard: { width: '100%', maxWidth: 520, borderRadius: 14, borderWidth: 1, padding: 16 },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   modalTitle: { fontSize: 18, fontWeight: '700' },
   toggleContainer: { 
