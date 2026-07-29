@@ -29,6 +29,7 @@ interface SelectFromDef {
   labelKeys: string[];
   filterKey?: string;
   filterValueFromField?: string;
+  onlyActive?: boolean;
 }
 
 interface FieldDef {
@@ -49,7 +50,7 @@ export interface SimpleCrudScreenProps {
   rowLabel: (r: any) => string;
   hideAddButton?: boolean;
   filter?: Record<string, any>;
-  headerExtra?: React.ReactNode; // <-- Header filter slot
+  headerExtra?: React.ReactNode;
 }
 
 export function SimpleCrudScreen({ 
@@ -80,7 +81,14 @@ export function SimpleCrudScreen({
     const opts: Record<string, any[]> = {};
     for (const f of selectFields) {
       const sf = f.selectFrom!;
-      const { data } = await supabase.from(sf.table).select('*');
+      let query = supabase.from(sf.table).select('*');
+      
+      // Automatic Active filtering for Circles & Mozas in forms
+      if (sf.onlyActive !== false && (sf.table === 'circles' || sf.table === 'mozas')) {
+        query = query.eq('status', true);
+      }
+
+      const { data } = await query;
       opts[f.key] = data || [];
     }
     setOptions(opts);
@@ -181,7 +189,7 @@ export function SimpleCrudScreen({
     {
       key: '_actions', label: '', sortable: false, align: 'right',
       render: (r) => (
-        <View style={{ flexDirection: 'row', gap: 6, justifyContent: 'flex-end' }}>
+        <View style={{ flexDirection: 'row', gap: 6, justifyContent: 'flex-end', minWidth: 60 }}>
           {can(table, 'update') ? (
             <TouchableOpacity onPress={() => openEdit(r)} style={[styles.iconBtn, { borderColor: p.border }]}><Pencil size={14} color={p.primary} /></TouchableOpacity>
           ) : null}
@@ -198,12 +206,12 @@ export function SimpleCrudScreen({
       <View style={{ flex: 1, minHeight: 0 }}>
         {/* Header Actions & Filter Slot */}
         <View style={styles.topActions}>
-          <View>
+          <View style={{ marginBottom: 4 }}>
             <Text style={[styles.pageTitle, { color: p.text }]}>{title}</Text>
             <Text style={[styles.pageSub, { color: p.textMuted }]}>{rows.length} record(s)</Text>
           </View>
 
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap', flex: 1 }}>
             {headerExtra}
             {can(table, 'insert') && !hideAddButton ? (
               <Button title="Add New" onPress={openAdd} icon={<Plus size={16} color={p.primaryText} />} />
@@ -213,13 +221,15 @@ export function SimpleCrudScreen({
 
         {error ? <View style={{ marginBottom: 12 }}><ErrorText message={error} /></View> : null}
 
-        {/* Scrollable Table Container */}
+        {/* Scrollable Table Container with Horizontal Scroll support */}
         <Card style={{ flex: 1, padding: 0, overflow: 'hidden' }}>
           {loading ? (
             <EmptyState message="Loading..." />
           ) : (
             <ScrollView style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1 }}>
-              <DataTable columns={allColumns} rows={rows} smallHeaders />
+              <ScrollView horizontal showsHorizontalScrollIndicator={true} contentContainerStyle={{ minWidth: '100%' }}>
+                <DataTable columns={allColumns} rows={rows} smallHeaders />
+              </ScrollView>
             </ScrollView>
           )}
         </Card>
@@ -353,7 +363,7 @@ export function NativeSelect({ value, placeholder, options, onChange }: { value:
 }
 
 const styles = StyleSheet.create({
-  topActions: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, gap: 12, flexWrap: 'wrap' },
+  topActions: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, gap: 10, flexWrap: 'wrap' },
   pageTitle: { fontSize: 20, fontWeight: '800' },
   pageSub: { fontSize: 13, marginTop: 2 },
   iconBtn: { width: 30, height: 30, borderRadius: 8, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },

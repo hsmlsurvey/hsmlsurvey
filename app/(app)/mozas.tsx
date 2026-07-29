@@ -4,21 +4,69 @@ import { SimpleCrudScreen, NativeSelect } from '@/components/SimpleCrudScreen';
 import { usePalette, Input } from '@/components/ui';
 import { supabase } from '@/lib/supabase';
 
+// Helper function: Circle active status check
+const isActiveStatus = (item: any): boolean => {
+  if (!item) return false;
+  if (item.status !== undefined && item.status !== null) {
+    if (typeof item.status === 'boolean') return item.status;
+    const s = String(item.status).trim().toLowerCase();
+    return s === 'active' || s === '1' || s === 'true' || s === 'a';
+  }
+  return true;
+};
+
 export default function MozasScreen() {
   const p = usePalette();
-  const [circleOpts, setCircleOpts] = useState<{ value: string; label: string }[]>([]);
-  const [mozaCodeMap, setMozaCodeMap] = useState<Record<string, string>>({});
+  // Active circles for top filter dropdown
+  const [activeCircleOpts, setActiveCircleOpts] = useState<{ value: string; label: string }[]>([]);
+  // All circles for table row dropdown
+  const [allCircleOpts, setAllCircleOpts] = useState<{ value: string; label: string }[]>([]);
   
+  // Store the exact status value from DB for active circles
+  const [activeDbStatus, setActiveDbStatus] = useState<any>(null);
+
+  const [mozaCodeMap, setMozaCodeMap] = useState<Record<string, string>>({});
   const [selectedCircle, setSelectedCircle] = useState<string>('');
   const [circleSearchText, setCircleSearchText] = useState<string>('');
 
   useEffect(() => {
+    // Fetch all circles sorted by circle_code
     supabase
       .from('circles')
-      .select('id, circle_name')
-      .order('circle_name', { ascending: true })
-      .then(({ data }) => setCircleOpts(data?.map((c) => ({ value: c.id, label: c.circle_name })) || []));
+      .select('id, circle_code, circle_name, status')
+      .order('circle_code', { ascending: true })
+      .then(({ data, error }) => {
+        if (error) {
+          console.error('Error fetching circles:', error);
+          return;
+        }
+        const circlesList = data || [];
 
+        // 1. All circle options for table row editing
+        const allOpts = circlesList.map((c: any) => ({
+          value: String(c.id),
+          label: c.circle_code 
+            ? `${c.circle_code} - ${c.circle_name}${!isActiveStatus(c) ? ' (Inactive)' : ''}`
+            : `${c.circle_name}${!isActiveStatus(c) ? ' (Inactive)' : ''}`,
+        }));
+        setAllCircleOpts(allOpts);
+
+        // 2. Active circle options only for top filter dropdown
+        const activeCircles = circlesList.filter(isActiveStatus);
+        
+        // Save the exact DB status value (e.g., 'active', '1', or true)
+        if (activeCircles.length > 0) {
+          setActiveDbStatus(activeCircles[0].status);
+        }
+
+        const activeOpts = activeCircles.map((c: any) => ({
+          value: String(c.id),
+          label: c.circle_code ? `${c.circle_code} - ${c.circle_name}` : c.circle_name,
+        }));
+        setActiveCircleOpts(activeOpts);
+      });
+
+    // Passbook Entries Map
     supabase
       .from('passbook_entries')
       .select('moza_id, growers(passbook_number)')
@@ -44,40 +92,53 @@ export default function MozasScreen() {
     }
   };
 
+  // Search filter for top circle dropdown
   const filteredCircleOpts = useMemo(() => {
-    if (!circleSearchText.trim()) return circleOpts;
-    return circleOpts.filter((c) =>
+    if (!circleSearchText.trim()) return activeCircleOpts;
+    return activeCircleOpts.filter((c) =>
       c.label.toLowerCase().includes(circleSearchText.toLowerCase())
     );
-  }, [circleOpts, circleSearchText]);
+  }, [activeCircleOpts, circleSearchText]);
 
   const filterDropdownOptions = [
     { value: '', label: 'All Circles' },
     ...filteredCircleOpts,
   ];
 
+  // Mozas Filter logic:
+  // - Specific circle selected -> Filter by `circle_id`
+  // - "All Circles" selected -> Filter dynamically using DB's active status value
+  const currentFilter = useMemo(() => {
+    if (selectedCircle) {
+      return { circle_id: selectedCircle };
+    }
+    if (activeDbStatus !== null && activeDbStatus !== undefined) {
+      return { 'circles.status': activeDbStatus };
+    }
+    return undefined;
+  }, [selectedCircle, activeDbStatus]);
+
   return (
     <SimpleCrudScreen
       title="Mozas"
       table="mozas"
-      rowLabel={(r) => r.moza_name}
-      filter={selectedCircle ? { circle_id: selectedCircle } : undefined}
+      rowLabel={(r: any) => r.moza_name}
+      filter={currentFilter}
       headerExtra={
-        /* Responsive Filter Container */
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, flex: 1 }}>
-          <View style={{ flex: 1, minWidth: 130 }}>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 4, alignItems: 'center' }}>
+          <View style={{ width: 220, maxWidth: '100%' }}>
             <Input
               placeholder="Search Circle..."
               value={circleSearchText}
-              onChangeText={(t) => setCircleSearchText(t)}
+              onChangeText={setCircleSearchText}
             />
           </View>
-          <View style={{ flex: 1, minWidth: 130 }}>
+          <View style={{ width: 260, maxWidth: '100%' }}>
             <NativeSelect
               value={selectedCircle}
               placeholder="All Circles"
               options={filterDropdownOptions}
-              onChange={(v) => setSelectedCircle(v)}
+              onChange={setSelectedCircle}
             />
           </View>
         </View>
@@ -92,19 +153,20 @@ export default function MozasScreen() {
         },
         { key: 'moza_name', label: 'Moza', placeholder: 'Moza Name', required: true },
       ]}
-      fetchSelect="*, circles:circle_id(circle_name)"
+      // Inner join with circles table to filter inactive circles out
+      fetchSelect="*, circles!inner(id, circle_code, circle_name, status)"
       columns={[
         {
           key: 's_no',
           label: 'S.#',
-          width: 50,
-          render: (_, i) => <Text style={{ fontWeight: '600', color: p.text }}>{i + 1}</Text>,
+          width: 45,
+          render: (_: any, i: number) => <Text style={{ fontWeight: '600', color: p.text }}>{i + 1}</Text>,
         },
         {
           key: 'moza_code',
           label: 'Moza Code',
-          width: 100,
-          render: (r) => (
+          width: 95,
+          render: (r: any) => (
             <Text style={{ fontWeight: '700', color: p.primary, fontSize: 13 }}>
               {r.moza_code || mozaCodeMap[r.id] || '-'}
             </Text>
@@ -113,18 +175,18 @@ export default function MozasScreen() {
         {
           key: 'moza_name',
           label: 'Moza',
-          width: 180,
-          render: (r) => <Text style={{ fontWeight: '700', color: p.text }}>{r.moza_name}</Text>,
+          width: 140,
+          render: (r: any) => <Text style={{ fontWeight: '700', color: p.text }}>{r.moza_name}</Text>,
         },
         {
           key: 'circle_id',
           label: 'Circle',
-          width: 180,
-          render: (r) => (
+          width: 230,
+          render: (r: any) => (
             <NativeSelect
               value={r.circle_id || ''}
               placeholder="Select Circle"
-              options={circleOpts}
+              options={allCircleOpts}
               onChange={(v) => updateCircle(r.id, v)}
             />
           ),
